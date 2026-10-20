@@ -1,0 +1,57 @@
+- [ ] **Slice 1: Walking skeleton**
+  - Files: `pyproject.toml`, `app/main.py`, `app/config/loader.py`, `app/db/analytics.py`, `app/db/store.py`, `app/llm/client.py`, `app/pipeline/run.py`, `app/pipeline/validate.py`, `app/pipeline/execute.py`, `app/api/routes.py`, `config/sample.yaml`, `tests/fixtures/make_sample_db.py`, `tests/unit/test_skeleton.py`
+  - Verify: SELECT via mock returns rows and a `success` audit row; `DROP TABLE` from mock is rejected, not executed, and audit-logged; a write through the `mode=ro` connection raises; `curl` against `uvicorn` returns the expected JSON.
+- [ ] **Slice 2: Golden-question harness**
+  - Files: `tests/golden/cases.yaml`, `tests/golden/test_golden.py`, `tests/golden/conftest.py`, `app/pipeline/run.py` (LLM injection seam)
+  - Verify: `uv run pytest tests/golden` passes in replay mode; a changed expected result fails and prints the pass rate; gate at 95% applies once the set has 10 cases.
+- [ ] **Slice 3: Execution limits and truncation**
+  - Files: `app/config/loader.py`, `app/pipeline/execute.py`, `app/api/routes.py`, `tests/unit/test_execute_limits.py`, one golden case
+  - Verify: 1,500-row query returns 1,000 rows with `truncated=true` and total N; busy query hits a test timeout and logs `timeout`; cap and timeout are read from config.
+- [ ] **Slice 4: Validator hardening**
+  - Files: `app/pipeline/validate.py`, `tests/unit/test_validate.py`
+  - Verify: parametrised attack list passes (multi-statement, DML inside CTE, comment tricks, `PRAGMA`, `ATTACH`, unknown table); valid CTEs pass; each rejection carries a reason in the response and audit log.
+- [ ] **Slice 5: Real LLM client and SQL prompt**
+  - Files: `app/llm/anthropic_client.py`, `prompts/sql_v1.md`, `tests/unit/test_llm_client.py`, prompt-version plumbing into `app/db/store.py`
+  - Verify: unit tests with SDK stubbed (malformed response = generation failure; API error = "The AI service is unavailable. Try again shortly." with no executed-query log); `uv run pytest tests/golden --live` on the sample DB; audit rows show `sql_v1`.
+- [ ] **Slice 6: Explanation**
+  - Files: `prompts/explain_v1.md`, `app/pipeline/explain.py`, `tests/unit/test_explain.py`, response model
+  - Verify: explain call receives the actual rows; zero rows returns "No matching records" with SQL; injection text in a cell is passed as data; 1–2 golden cases.
+- [ ] **Slice 7: Intent classifier and declines**
+  - Files: `prompts/intent_v1.md`, `app/pipeline/intent.py`, `tests/unit/test_intent.py`, decline builder, golden cases
+  - Verify: classifier receives only the question text; non-data never reaches generate; decline does not echo the injected text; `declined: non-data` is audit-logged; golden cases for small talk, data-change request, injection, and a data question that must not be declined.
+- [ ] **Slice 8: Single repair attempt**
+  - Files: `app/pipeline/repair.py`, `tests/unit/test_repair.py`, `flags` for `repair_used`, golden case with recorded bad-then-good response
+  - Verify: bad then good SQL gives one repair and success; bad twice gives failure with SQL and no third call; a repair returning `DELETE` is rejected by the validator.
+- [ ] **Slice 9: Config schema, validation and startup check**
+  - Files: `app/config/schema.py`, `app/config/loader.py`, `app/config/catalog_check.py`, `app/main.py`, `GET /api/databases`, `config/sample.yaml`, `tests/unit/test_config.py`
+  - Verify: malformed YAML reports file and line; a missing column is excluded and logged while the app starts; a missing DB file shows `unavailable` with reason; `/api/databases` reflects both.
+- [ ] **Slice 10: Retrieval part 1 (tables, columns, join neighbours)**
+  - Files: `app/retrieval/embedder.py` (`Embedder` protocol, `BgeSmallEmbedder` for `bge-small-en-v1.5`, `FakeEmbedder`), `app/retrieval/index.py`, `app/retrieval/select.py`, `app/pipeline/run.py`, `prompts/sql_v2.md`, `tests/unit/test_retrieval_tables.py`
+  - Verify: with the fake embedder, expected tables and columns are selected, neighbours added once, wide tables bounded; one opt-in test with the real model; audit row holds item IDs; full schema not sent.
+- [ ] **Slice 11: Retrieval part 2 (metrics, notes, join hints, fallback)**
+  - Files: `app/retrieval/select.py`, `app/pipeline/repair.py`, `prompts/sql_v3.md`, `tests/unit/test_retrieval_context.py`, golden cases for synonym match and retrieval miss
+  - Verify: exact synonym forces metric into context; no match above threshold gives top-4 tables and `low_retrieval_confidence`; out-of-context table reference triggers one full-schema repair, shown in audit.
+- [ ] **Slice 12: Few-shot examples**
+  - Files: `app/config/examples.py`, `app/retrieval/select.py`, `prompts/sql_v4.md`, `config/examples/sample.yaml`, `tests/unit/test_examples.py`
+  - Verify: broken example is skipped and logged with file, index and reason, and the app still starts; DB with no examples raises no error and no banner; repair uses the same examples; an example containing `DROP` is rejected.
+- [ ] **Slice 13: Dates, clarification and join warnings**
+  - Files: `app/pipeline/dates.py`, `app/pipeline/generate.py`, `app/pipeline/joins.py`, `prompts/sql_v5.md`, `tests/unit/test_dates.py`, `tests/unit/test_joins.py`, golden cases for "revenue", "last quarter", many-to-many join
+  - Verify: ambiguous question never reaches the executor; resolved date range appears in the response; many-to-many sets `join_duplication`, hinted one-to-many does not.
+- [ ] **Slice 14: Auth and users**
+  - Files: `app/db/store.py`, `app/api/auth.py`, `app/cli.py`, `tests/unit/test_auth.py`
+  - Verify: unauthenticated `/api/ask` returns 401; passwords stored as argon2 hashes; audit row carries the real username; golden harness uses a test user.
+- [ ] **Slice 15: Conversations and follow-up context**
+  - Files: `app/db/store.py`, `app/pipeline/context.py`, `app/api/routes.py`, `tests/unit/test_conversations.py`, multi-turn golden case
+  - Verify: follow-up prompt contains prior question, SQL and explanation but no rows; another user gets 404 on the conversation; switching database starts a fresh context.
+- [ ] **Slice 16: HTMX shell, chat and answer bubble**
+  - Files: `app/ui/templates/base.html`, `login.html`, `picker.html`, `chat.html`, `_answer.html`, `app/ui/routes.py`, static CSS, `tests/unit/test_ui.py`
+  - Verify: TestClient renders banner above explanation with details collapsed; manual run via `uv run uvicorn app.main:app --reload` through login, picker and one question.
+- [ ] **Slice 17: History, re-run and deletion**
+  - Files: `app/ui/templates/_sidebar.html`, reopen route in `app/ui/routes.py`, `DELETE /api/conversations/{id}` in `app/api/routes.py`, `tests/unit/test_history.py`
+  - Verify: reopen shows fresh table with "Re-run at" time; dropped column gives graceful failure with explanation intact; delete removes messages but keeps audit rows; deleting another user's conversation is refused.
+- [ ] **Slice 18: Table interactions and CSV export**
+  - Files: `app/ui/templates/_table.html`, `GET /api/export/{message_id}.csv` in `app/api/routes.py`, `tests/unit/test_export.py`
+  - Verify: CSV matches table rows and headers and respects the cap; cells starting with `=`, `+`, `-` or `@` are neutralised; another user's message returns 404.
+- [ ] **Slice 19: Golden suite as release gate and hardening**
+  - Files: `tests/golden/cases.yaml` (10 cases covering all four types, injection, out-of-scope, clarification, truncation), `docs/RUNNING.md`
+  - Verify: `uv run pytest tests/golden` passes in replay; `--live` passes 10/10; `uv run ruff check .`, `uv run mypy app` and `uv run pytest` are green.
