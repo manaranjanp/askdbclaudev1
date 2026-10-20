@@ -1,0 +1,2 @@
+name: sample
+path: ${SAMPLE_DB_PATH}

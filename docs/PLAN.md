@@ -1,21 +1,25 @@
-- [ ] **Slice 1: Walking skeleton**
+- [x] **Slice 1: Walking skeleton**
   - Files: `pyproject.toml`, `app/main.py`, `app/config/loader.py`, `app/db/analytics.py`, `app/db/store.py`, `app/llm/client.py`, `app/pipeline/run.py`, `app/pipeline/validate.py`, `app/pipeline/execute.py`, `app/api/routes.py`, `config/sample.yaml`, `tests/fixtures/make_sample_db.py`, `tests/unit/test_skeleton.py`
   - Verify: SELECT via mock returns rows and a `success` audit row; `DROP TABLE` from mock is rejected, not executed, and audit-logged; a write through the `mode=ro` connection raises; `curl` against `uvicorn` returns the expected JSON.
 - [ ] **Slice 2: Golden-question harness and validator hardening**
   - Files: `tests/golden/cases.yaml`, `tests/golden/test_golden.py`, `tests/golden/conftest.py`, `app/pipeline/run.py` (LLM injection seam), `app/pipeline/validate.py`, `tests/unit/test_validate.py`
   - Verify: `uv run pytest tests/golden` passes in replay mode; a changed expected result fails and prints the pass rate; gate at 95% applies once the set has 10 cases; parametrised attack list passes (multi-statement, DML inside CTE, comment tricks, `PRAGMA`, `ATTACH`, unknown table); valid CTEs pass; each rejection carries a reason in the response and audit log.
+  - Note (slice 1): `app/pipeline/validate.py` checks statement shape and forbidden node types only. The table-existence check (SPEC 6.2) is still to add here.
 - [ ] **Slice 3: Execution limits and truncation**
   - Files: `app/config/loader.py`, `app/pipeline/execute.py`, `app/api/routes.py`, `tests/unit/test_execute_limits.py`, one golden case
   - Verify: 1,500-row query returns 1,000 rows with `truncated=true` and total N; busy query hits a test timeout and logs `timeout`; cap and timeout are read from config.
+  - Note (slice 1): `run_select` in `app/pipeline/execute.py` fetches every row and has no timeout yet. Both go in this slice.
 - [ ] **Slice 4: Config schema, validation and startup check**
   - Files: `app/config/schema.py`, `app/config/loader.py`, `app/config/catalog_check.py`, `app/main.py`, `GET /api/databases`, `config/sample.yaml`, `tests/unit/test_config.py`
   - Verify: malformed YAML reports file and line; a missing column is excluded and logged while the app starts; a missing DB file shows `unavailable` with reason; `/api/databases` reflects both.
 - [ ] **Slice 5: Auth and users**
   - Files: `app/db/store.py`, `app/api/auth.py`, `app/cli.py`, `tests/unit/test_auth.py`
   - Verify: unauthenticated `/api/ask` returns 401; passwords stored as argon2 hashes; audit row carries the real username; golden harness uses a test user.
+  - Note (slice 1): `DEV_USER` in `app/api/routes.py` is hardcoded to `dev`. Replace it with the logged-in user here.
 - [ ] **Slice 6: Real LLM client and SQL prompt**
   - Files: `app/llm/anthropic_client.py`, `prompts/sql_v1.md`, `tests/unit/test_llm_client.py`, prompt-version plumbing into `app/db/store.py`
   - Verify: unit tests with SDK stubbed (malformed response = generation failure; API error = "The AI service is unavailable. Try again shortly." with no executed-query log); `uv run pytest tests/golden --live` on the sample DB; audit rows show `sql_v1`.
+  - Note (slice 1): `AppStore` in `app/db/store.py` uses `create_all`, which does not add columns to an existing `app_store.sqlite`. Before adding prompt-version columns here, delete the dev store or add a migration.
 - [ ] **Slice 7: Explanation and intent classifier with declines**
   - Files: `prompts/explain_v1.md`, `app/pipeline/explain.py`, `tests/unit/test_explain.py`, response model, `prompts/intent_v1.md`, `app/pipeline/intent.py`, `tests/unit/test_intent.py`, decline builder, golden cases
   - Verify: explain call receives the actual rows; zero rows returns "No matching records" with SQL; injection text in a cell is passed as data; classifier receives only the question text; non-data never reaches generate; decline does not echo the injected text; `declined: non-data` is audit-logged; golden cases for small talk, data-change request, injection, and a data question that must not be declined.
