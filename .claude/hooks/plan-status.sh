@@ -1,7 +1,7 @@
 #!/bin/bash
 # Stop hook: after each response, show slice progress from PLAN.md.
 
-PLAN="$CLAUDE_PROJECT_DIR/PLAN.md"
+PLAN="$CLAUDE_PROJECT_DIR/docs/PLAN.md"
 [ -f "$PLAN" ] || exit 0
 
 DONE=$(grep -c '^- \[x\] \*\*Slice' "$PLAN")
