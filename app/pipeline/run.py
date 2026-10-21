@@ -12,6 +12,7 @@ from app.llm.client import GenerationError, LLMClient, LLMUnavailable
 from app.pipeline.execute import QueryTimeout, run_select
 from app.pipeline.intent import DECLINE_MESSAGE, NO_MATCHING_RECORDS, parse_intent
 from app.pipeline.validate import validate
+from app.retrieval.index import Retrieval
 
 OUTCOME_SUCCESS = "success"
 OUTCOME_DECLINED = "declined: non-data"
@@ -46,15 +47,18 @@ class Pipeline:
         store: AppStore,
         limits: Limits,
         unavailable: Mapping[str, str],
+        retrieval: Retrieval | None = None,
     ) -> None:
         self._engines = engines
         self._llm = llm
         self._store = store
         self._limits = limits
         self._unavailable = unavailable
+        self._retrieval = retrieval
 
     def ask(self, user: str, database: str, question: str) -> Answer:
-        answer = self._answer(database, question)
+        retrieved: list[str] = []
+        answer = self._answer(database, question, retrieved)
         self._store.log(
             AuditEntry(
                 user=user,
@@ -66,11 +70,12 @@ class Pipeline:
                 error=answer.error,
                 prompt_version=self._llm.prompt_version,
                 repair_used=answer.repair_used,
+                retrieved_items=",".join(retrieved) or None,
             )
         )
         return answer
 
-    def _answer(self, database: str, question: str) -> Answer:
+    def _answer(self, database: str, question: str, retrieved: list[str]) -> Answer:
         # Stage order is fixed (CLAUDE.md guardrail 2). Retrieval (slice 9) is not built yet and passes
         # straight through. The explanation stage waits on SPEC Q2.
         if database in self._unavailable:
@@ -86,10 +91,11 @@ class Pipeline:
             # The decline text never repeats the question, so injected text is not echoed back.
             return Answer(OUTCOME_DECLINED, message=DECLINE_MESSAGE)
         try:
-            schema = describe_schema(engine)
+            schema, item_ids = self._context(database, engine, question)
             known_tables = table_names(engine)
         except SQLAlchemyError as exc:
             return Answer(OUTCOME_EXECUTION_ERROR, error=str(exc))
+        retrieved.extend(item_ids)
         try:
             sql = self._llm.generate_sql(question, schema)
         except LLMUnavailable:
@@ -102,6 +108,13 @@ class Pipeline:
         if answer.outcome not in REPAIRABLE_OUTCOMES or answer.sql is None:
             return answer
         return self._repair(engine, question, schema, known_tables, answer)
+
+    def _context(self, database: str, engine: Engine, question: str) -> tuple[str, list[str]]:
+        # With retrieval, only the question's tables and columns are sent (SPEC 10.1). Without it, the whole schema.
+        if self._retrieval is not None and database in self._retrieval.indexes:
+            selection = self._retrieval.indexes[database].select(question, self._retrieval.settings)
+            return selection.schema_text(), selection.item_ids
+        return describe_schema(engine), []
 
     def _repair(
         self, engine: Engine, question: str, schema: str, known_tables: set[str], failed: Answer

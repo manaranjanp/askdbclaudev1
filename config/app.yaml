@@ -2,3 +2,7 @@
 row_cap: 1000
 query_timeout_seconds: 30
 llm_model: claude-sonnet-5-5
+retrieval:
+  top_tables: 4
+  columns_per_table: 10
+  max_tables: 8

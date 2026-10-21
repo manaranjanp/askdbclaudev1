@@ -19,6 +19,14 @@ class Limits:
 
 
 @dataclass(frozen=True)
+class RetrievalSettings:
+    # Starting defaults from SPEC Q11. App-wide, not per database.
+    top_tables: int = 4
+    columns_per_table: int = 10
+    max_tables: int = 8
+
+
+@dataclass(frozen=True)
 class DatabaseConfig:
     # name is the file stem when the file cannot be read, so a broken file still has a row in the picker.
     name: str
@@ -41,6 +49,20 @@ def load_limits(config_dir: Path) -> Limits:
 
 
 DEFAULT_LLM_MODEL = "claude-sonnet-5-5"
+
+
+def load_retrieval(config_dir: Path) -> RetrievalSettings:
+    file = config_dir / APP_SETTINGS_FILE
+    if not file.exists():
+        return RetrievalSettings()
+    raw: dict[str, Any] = yaml.safe_load(file.read_text()) or {}
+    section: dict[str, Any] = raw.get("retrieval") or {}
+    defaults = RetrievalSettings()
+    return RetrievalSettings(
+        top_tables=int(section.get("top_tables", defaults.top_tables)),
+        columns_per_table=int(section.get("columns_per_table", defaults.columns_per_table)),
+        max_tables=int(section.get("max_tables", defaults.max_tables)),
+    )
 
 
 def load_llm_model(config_dir: Path) -> str:

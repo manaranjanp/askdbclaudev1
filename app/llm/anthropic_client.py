@@ -6,7 +6,7 @@ import anthropic
 from app.llm.client import GenerationError, LLMUnavailable
 
 PROMPTS_DIR = Path(__file__).resolve().parents[2] / "prompts"
-SQL_PROMPT = "sql_v1.md"
+SQL_PROMPT = "sql_v2.md"
 INTENT_PROMPT = "intent_v1.md"
 REPAIR_PROMPT = "repair_v1.md"
 MAX_TOKENS = 1024

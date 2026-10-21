@@ -31,7 +31,8 @@
 - [ ] **Slice 9: Retrieval part 1 (tables, columns, join neighbours)**
   - Files: `app/retrieval/embedder.py` (`Embedder` protocol, `BgeSmallEmbedder` for `bge-small-en-v1.5`, `FakeEmbedder`), `app/retrieval/index.py`, `app/retrieval/select.py`, `app/pipeline/run.py`, `prompts/sql_v2.md`, `tests/unit/test_retrieval_tables.py`
   - Verify: with the fake embedder, expected tables and columns are selected, neighbours added once, wide tables bounded; one opt-in test with the real model; audit row holds item IDs; full schema not sent.
-  - Note (slice 6): `sql_v1` sends the whole schema from `describe_schema` (no retrieval yet). Replace it with the retrieved subset here.
+  - Note (slice 6): `sql_v1` sent the whole schema. Slice 9 switched to `sql_v2` with the retrieved subset.
+  - Partly done (slice 9 run): `Embedder` protocol, `FakeEmbedder`, `SchemaIndex` with FK join neighbours, bounded selection, `sql_v2`, item IDs in the audit log. Not done: `BgeSmallEmbedder` and the opt-in real-model test, both waiting on SPEC Q10. `create_app` runs without retrieval until an embedder is passed.
 - [ ] **Slice 10: Retrieval part 2 (metrics, notes, join hints, fallback) and few-shot examples**
   - Files: `app/retrieval/select.py`, `app/pipeline/repair.py`, `prompts/sql_v3.md`, `tests/unit/test_retrieval_context.py`, `app/config/examples.py`, `prompts/sql_v4.md`, `config/examples/sample.yaml`, `tests/unit/test_examples.py`, golden cases for synonym match and retrieval miss
   - Verify: exact synonym forces metric into context; no match above threshold gives top-4 tables and `low_retrieval_confidence`; out-of-context table reference triggers one full-schema repair, shown in audit; broken example is skipped and logged with file, index and reason, and the app still starts; DB with no examples raises no error and no banner; repair uses the same examples; an example containing `DROP` is rejected.

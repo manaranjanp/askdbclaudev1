@@ -18,7 +18,7 @@ from tests.fixtures.make_sample_db import make_sample_db
 MODEL = "claude-test-model"
 SCHEMA = "sales(id INTEGER, region TEXT, amount REAL)"
 GOOD_SQL = "SELECT region, SUM(amount) AS total FROM sales GROUP BY region ORDER BY region"
-PROMPT_VERSION = "sql_v1,intent_v1,repair_v1"
+PROMPT_VERSION = "sql_v2,intent_v1,repair_v1"
 
 
 class StubMessages:

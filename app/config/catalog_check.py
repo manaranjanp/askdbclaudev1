@@ -6,6 +6,7 @@ from sqlalchemy import Engine, inspect
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.config.loader import DatabaseConfig, load_databases
+from app.config.schema import TableSpec
 from app.db.analytics import open_readonly
 
 logger = logging.getLogger(__name__)
@@ -25,6 +26,8 @@ class Catalog:
     statuses: list[DatabaseStatus] = field(default_factory=list)
     engines: dict[str, Engine] = field(default_factory=dict)
     unavailable: dict[str, str] = field(default_factory=dict)
+    # Declared tables per available database, for descriptions and synonyms in retrieval.
+    tables: dict[str, dict[str, TableSpec]] = field(default_factory=dict)
 
 
 def check_catalog(config_dir: Path) -> Catalog:
@@ -35,6 +38,7 @@ def check_catalog(config_dir: Path) -> Catalog:
         catalog.statuses.append(status)
         if engine is not None:
             catalog.engines[status.name] = engine
+            catalog.tables[status.name] = config.tables
         elif status.name not in catalog.engines and status.reason is not None:
             # setdefault: a duplicate name must not replace the reason for the first definition.
             catalog.unavailable.setdefault(status.name, status.reason)
