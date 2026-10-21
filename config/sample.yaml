@@ -1,2 +1,12 @@
 name: sample
 path: ${SAMPLE_DB_PATH}
+tables:
+  sales:
+    description: One row per sale, with the region it was made in.
+    columns:
+      id:
+        description: Sale identifier.
+      region:
+        description: Sales region name, such as North or South.
+      amount:
+        description: Sale value in the reporting currency.

@@ -30,11 +30,19 @@ class Answer:
 
 
 class Pipeline:
-    def __init__(self, engines: Mapping[str, Engine], llm: LLMClient, store: AppStore, limits: Limits) -> None:
+    def __init__(
+        self,
+        engines: Mapping[str, Engine],
+        llm: LLMClient,
+        store: AppStore,
+        limits: Limits,
+        unavailable: Mapping[str, str],
+    ) -> None:
         self._engines = engines
         self._llm = llm
         self._store = store
         self._limits = limits
+        self._unavailable = unavailable
 
     def ask(self, user: str, database: str, question: str) -> Answer:
         answer = self._answer(database, question)
@@ -54,6 +62,8 @@ class Pipeline:
     def _answer(self, database: str, question: str) -> Answer:
         # Stage order is fixed (CLAUDE.md guardrail 2). Intent (slice 7) and retrieval (slice 9)
         # are not built yet and pass straight through. Repair (slice 8) is not built yet either.
+        if database in self._unavailable:
+            return Answer(OUTCOME_EXECUTION_ERROR, error=f"Database unavailable: {self._unavailable[database]}")
         engine = self._engines.get(database)
         if engine is None:
             return Answer(OUTCOME_EXECUTION_ERROR, error=f"Unknown database: {database}")

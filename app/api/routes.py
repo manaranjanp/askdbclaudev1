@@ -3,6 +3,7 @@ from typing import Any
 from fastapi import APIRouter, Request
 from pydantic import BaseModel
 
+from app.config.catalog_check import DatabaseStatus
 from app.pipeline.run import Pipeline
 
 router = APIRouter(prefix="/api")
@@ -24,6 +25,22 @@ class AskResponse(BaseModel):
     error: str | None
     truncated: bool
     total_rows: int | None
+
+
+class DatabaseInfo(BaseModel):
+    name: str
+    available: bool
+    reason: str | None
+    excluded: list[str]
+
+
+@router.get("/databases")
+def databases(request: Request) -> list[DatabaseInfo]:
+    statuses: list[DatabaseStatus] = request.app.state.databases
+    return [
+        DatabaseInfo(name=s.name, available=s.available, reason=s.reason, excluded=list(s.excluded))
+        for s in statuses
+    ]
 
 
 @router.post("/ask")

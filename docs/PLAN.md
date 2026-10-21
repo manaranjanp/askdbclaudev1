@@ -9,7 +9,7 @@
   - Files: `app/config/loader.py`, `app/pipeline/execute.py`, `app/api/routes.py`, `tests/unit/test_execute_limits.py`, one golden case
   - Verify: 1,500-row query returns 1,000 rows with `truncated=true` and total N; busy query hits a test timeout and logs `timeout`; cap and timeout are read from config.
   - Note (slice 1): `run_select` in `app/pipeline/execute.py` fetches every row and has no timeout yet. Both go in this slice.
-- [ ] **Slice 4: Config schema, validation and startup check**
+- [x] **Slice 4: Config schema, validation and startup check**
   - Files: `app/config/schema.py`, `app/config/loader.py`, `app/config/catalog_check.py`, `app/main.py`, `GET /api/databases`, `config/sample.yaml`, `tests/unit/test_config.py`
   - Verify: malformed YAML reports file and line; a missing column is excluded and logged while the app starts; a missing DB file shows `unavailable` with reason; `/api/databases` reflects both.
 - [ ] **Slice 5: Auth and users**

@@ -53,6 +53,7 @@ def run_case(case: Case, db_path: Path, store_path: Path) -> Answer:
         RecordedLLM(case.sql),
         AppStore(store_path),
         Limits(),
+        unavailable={},
     )
     return pipeline.ask(user="golden", database="sample", question=case.question)
 
