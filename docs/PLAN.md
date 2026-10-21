@@ -12,7 +12,7 @@
 - [x] **Slice 4: Config schema, validation and startup check**
   - Files: `app/config/schema.py`, `app/config/loader.py`, `app/config/catalog_check.py`, `app/main.py`, `GET /api/databases`, `config/sample.yaml`, `tests/unit/test_config.py`
   - Verify: malformed YAML reports file and line; a missing column is excluded and logged while the app starts; a missing DB file shows `unavailable` with reason; `/api/databases` reflects both.
-- [ ] **Slice 5: Auth and users**
+- [x] **Slice 5: Auth and users**
   - Files: `app/db/store.py`, `app/api/auth.py`, `app/cli.py`, `tests/unit/test_auth.py`
   - Verify: unauthenticated `/api/ask` returns 401; passwords stored as argon2 hashes; audit row carries the real username; golden harness uses a test user.
   - Note (slice 1): `DEV_USER` in `app/api/routes.py` is hardcoded to `dev`. Replace it with the logged-in user here.

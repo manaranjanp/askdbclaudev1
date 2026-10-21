@@ -32,8 +32,15 @@ def config_dir(tmp_path: Path, sample_db: Path) -> Path:
     return directory
 
 
+ANALYST = "analyst"
+
+
 def build_client(config_dir: Path, store_path: Path, sql: str) -> TestClient:
-    return TestClient(create_app(config_dir, store_path, MockLLM(sql)))
+    # Logs in so the audit row carries a real username (slice 5).
+    AppStore(store_path).create_user(ANALYST, "correct horse battery")
+    client = TestClient(create_app(config_dir, store_path, MockLLM(sql)))
+    client.post("/api/login", json={"username": ANALYST, "password": "correct horse battery"})
+    return client
 
 
 def audit_rows(store_path: Path) -> list[tuple[str, str, str | None, int | None]]:
@@ -61,7 +68,7 @@ def test_select_runs_returns_rows_and_is_audited(config_dir: Path, tmp_path: Pat
     assert body["outcome"] == "success"
     assert body["columns"] == ["region", "total"]
     assert body["rows"] == [["North", 200.0], ["South", 200.0], ["West", 50.0]]
-    assert audit_rows(store_path) == [("dev", "success", GOOD_SQL, 3)]
+    assert audit_rows(store_path) == [(ANALYST, "success", GOOD_SQL, 3)]
 
 
 def test_drop_is_rejected_not_executed_and_audited(config_dir: Path, sample_db: Path, tmp_path: Path) -> None:
@@ -71,7 +78,7 @@ def test_drop_is_rejected_not_executed_and_audited(config_dir: Path, sample_db: 
 
     assert response.json()["outcome"] == "validation failure"
     assert sales_count(sample_db) == 4
-    assert audit_rows(store_path) == [("dev", "validation failure", "DROP TABLE sales", None)]
+    assert audit_rows(store_path) == [(ANALYST, "validation failure", "DROP TABLE sales", None)]
 
 
 def test_readonly_connection_refuses_writes(sample_db: Path) -> None:

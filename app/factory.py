@@ -12,12 +12,14 @@ from app.pipeline.run import Pipeline
 
 def create_app(config_dir: Path, store_path: Path, llm: LLMClient) -> FastAPI:
     catalog = check_catalog(config_dir)
+    store = AppStore(store_path)
     app = FastAPI()
     app.state.databases = catalog.statuses
+    app.state.store = store
     app.state.pipeline = Pipeline(
         catalog.engines,
         llm,
-        AppStore(store_path),
+        store,
         load_limits(config_dir),
         catalog.unavailable,
     )

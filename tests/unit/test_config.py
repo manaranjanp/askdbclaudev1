@@ -9,6 +9,7 @@ from fastapi.testclient import TestClient
 from app.config.catalog_check import check_catalog
 from app.factory import create_app
 from app.llm.client import MockLLM
+from tests.fixtures.login import logged_in_client
 
 GOOD_SQL = "SELECT region, SUM(amount) AS total FROM sales GROUP BY region ORDER BY region"
 
@@ -49,7 +50,8 @@ def make_config_dir(tmp_path: Path, files: dict[str, str]) -> Path:
 
 
 def client_for(config_dir: Path, tmp_path: Path, sql: str = GOOD_SQL) -> TestClient:
-    return TestClient(create_app(config_dir, tmp_path / "app_store.sqlite", MockLLM(sql)))
+    store_path = tmp_path / "app_store.sqlite"
+    return logged_in_client(create_app(config_dir, store_path, MockLLM(sql)), store_path)
 
 
 def database_rows(client: TestClient) -> dict[str, Any]:
@@ -118,8 +120,8 @@ def test_question_to_unavailable_database_is_refused_and_audited(tmp_path: Path)
         tmp_path, {"sales.yaml": SALES_CONFIG.format(name="sales", path=tmp_path / "gone.sqlite")}
     )
     store_path = tmp_path / "app_store.sqlite"
-    with TestClient(create_app(config_dir, store_path, MockLLM(GOOD_SQL))) as client:
-        body = client.post("/api/ask", json={"database": "sales", "question": "Totals?"}).json()
+    client = logged_in_client(create_app(config_dir, store_path, MockLLM(GOOD_SQL)), store_path)
+    body = client.post("/api/ask", json={"database": "sales", "question": "Totals?"}).json()
 
     assert body["outcome"] == "execution error"
     assert body["error"].startswith("Database unavailable: sales.yaml")

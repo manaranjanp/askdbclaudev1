@@ -2,7 +2,6 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from fastapi.testclient import TestClient
 from sqlalchemy import select
 
 from app.config.loader import Limits, load_limits
@@ -11,6 +10,7 @@ from app.db.store import AppStore, audit_log
 from app.factory import create_app
 from app.llm.client import MockLLM
 from app.pipeline.execute import QueryTimeout, run_select
+from tests.fixtures.login import logged_in_client
 from tests.fixtures.make_sample_db import make_events_db, make_sample_db
 
 EVENTS_SQL = "SELECT id FROM events ORDER BY id"
@@ -39,8 +39,8 @@ def make_config(tmp_path: Path, db_path: Path, app_yaml: str | None = None) -> P
 
 
 def ask(config_dir: Path, store_path: Path, sql: str) -> Any:
-    with TestClient(create_app(config_dir, store_path, MockLLM(sql))) as client:
-        response = client.post("/api/ask", json={"database": "sample", "question": "q"})
+    client = logged_in_client(create_app(config_dir, store_path, MockLLM(sql)), store_path)
+    response = client.post("/api/ask", json={"database": "sample", "question": "q"})
     return response.json()
 
 
