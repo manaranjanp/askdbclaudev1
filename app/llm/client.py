@@ -1,4 +1,4 @@
-from typing import Protocol
+from typing import Any, Protocol
 
 
 class LLMUnavailable(Exception):
@@ -23,6 +23,9 @@ class LLMClient(Protocol):
     # One repair attempt per question (SPEC 5.7 and slice 8). The model sees the failed SQL and its error.
     def repair_sql(self, question: str, schema: str, examples: str, failed_sql: str, error: str) -> str: ...
 
+    # The explanation is the one call that sends result rows to the hosted model (SPEC 10.1, Q2 decided).
+    def explain(self, question: str, sql: str, columns: list[str], rows: list[tuple[Any, ...]]) -> str: ...
+
 
 class MockLLM:
     # Stands in for the Anthropic client in tests. Returns the same SQL for every question.
@@ -39,3 +42,6 @@ class MockLLM:
 
     def repair_sql(self, question: str, schema: str, examples: str, failed_sql: str, error: str) -> str:
         return self._sql
+
+    def explain(self, question: str, sql: str, columns: list[str], rows: list[tuple[Any, ...]]) -> str:
+        return "Mock explanation."

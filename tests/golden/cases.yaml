@@ -8,6 +8,7 @@ cases:
       outcome: success
       columns: [region, total]
       rows: [[North, 200.0], [South, 200.0], [West, 50.0]]
+      explanation: Recorded explanation.
 
   - id: valid-cte
     question: Total sales by region, via a CTE?

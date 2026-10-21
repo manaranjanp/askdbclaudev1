@@ -189,7 +189,7 @@ class SchemaIndex:
         return cls(tables, metrics, notes, joins, example_infos, embedder)
 
     def select(self, question: str, settings: RetrievalSettings) -> Selection:
-        [query] = self._embedder.embed([question])
+        query = self._embedder.embed_query(question)
         ranked = sorted(self._tables.values(), key=lambda t: (-cosine(query, t.vector), t.name))
         best = cosine(query, ranked[0].vector) if ranked else 0.0
         chosen = [table.name for table in ranked[: settings.top_tables]]

@@ -44,6 +44,9 @@ class Case:
     retrieval: bool = False
 
 
+RECORDED_EXPLANATION = "Recorded explanation."
+
+
 class RecordedLLM:
     # Replay mode: the SQL and intent are recorded in cases.yaml, so the suite needs no API key.
     # Replies come in order (generation, then repair). Once they run out, the last one repeats.
@@ -65,6 +68,9 @@ class RecordedLLM:
     def repair_sql(self, question: str, schema: str, examples: str, failed_sql: str, error: str) -> str:
         self.seen_schema = schema
         return self._next_sql()
+
+    def explain(self, question: str, sql: str, columns: list[str], rows: list[tuple[Any, ...]]) -> str:
+        return RECORDED_EXPLANATION
 
     def _next_sql(self) -> str:
         return self._sql.pop(0) if len(self._sql) > 1 else self._sql[0]
@@ -142,6 +148,8 @@ def _actual(answer: Answer, key: str) -> Any:
         return answer.error
     if key == "message":
         return answer.message
+    if key == "explanation":
+        return answer.explanation
     if key == "repair_used":
         return answer.repair_used
     if key == "full_schema_repair":

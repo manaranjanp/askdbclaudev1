@@ -144,6 +144,9 @@ def test_app_sends_only_retrieved_schema_and_audits_item_ids(db: Path, tmp_path:
         def classify_intent(self, question: str) -> str:
             return "data"
 
+        def explain(self, question: str, sql: str, columns: list, rows: list) -> str:
+            return "Explained."
+
         def generate_sql(self, question: str, schema: str, examples: str) -> str:
             seen["schema"] = schema
             return "SELECT region, SUM(amount) FROM sales GROUP BY region"

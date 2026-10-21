@@ -18,7 +18,7 @@ from tests.fixtures.make_sample_db import make_sample_db
 MODEL = "claude-test-model"
 SCHEMA = "sales(id INTEGER, region TEXT, amount REAL)"
 GOOD_SQL = "SELECT region, SUM(amount) AS total FROM sales GROUP BY region ORDER BY region"
-PROMPT_VERSION = "sql_v3,intent_v1,repair_v2"
+PROMPT_VERSION = "sql_v3,intent_v1,repair_v2,explain_v1"
 
 
 class StubMessages:
@@ -146,7 +146,7 @@ def test_malformed_reply_is_a_generation_failure_with_no_query(app_factory: Any)
 
 
 def test_successful_answer_is_audited_with_prompt_version(app_factory: Any) -> None:
-    client, store_path = app_factory(text_reply("data"), text_reply(GOOD_SQL))
+    client, store_path = app_factory(text_reply("data"), text_reply(GOOD_SQL), text_reply("Explained."))
 
     body = client.post("/api/ask", json={"database": "sample", "question": "Totals?"}).json()
 

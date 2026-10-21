@@ -335,6 +335,7 @@ These need an answer before implementation or before sign-off.
 
 - **Q1.** Amend `one-pager.md` to reflect the v1 PII decision (section 9)? Currently it still says "never". Proposed wording: "For v1, personal data is out of scope; the app is internal, single-machine, and max 5 users."
 - **Q2.** Are result rows allowed to leave the machine and go to the hosted LLM for explanations? If not, options are: (a) explanations from aggregates only, (b) a local model, or (c) explanations generated without row data. Blocks R2.
+  - **Decided (user, slice 7):** yes, result rows go to the hosted LLM for explanations, as PLAN slice 7 assumes. R2 still applies: flagged for sign-off, not yet recorded as signed off.
 - **Q3.** What are the golden-question targets: how many questions, and what pass rate is required before a release? Proposed: 50 questions, 95% pass.
 - **Q4.** Are the analytics databases SQLite files? The spec assumes yes (section 4.2). Where are they, and how many are there?
 - **Q5.** Who can read the audit log? Proposed: support staff only, via a separate admin view or direct file access. Analysts cannot view it.
@@ -343,6 +344,7 @@ These need an answer before implementation or before sign-off.
 - **Q8.** Out-of-scope analytical questions (5.6) pass to SQL generation with no banner. Should the one-pager's "Supported Questions" list be enforced as a boundary, with the SQL generator refusing questions outside the four types? Current decision is no boundary, see R3.
 - **Q9.** Join hints: who validates that the declared cardinality is correct? Proposed: support, plus a check in the golden suite.
 - **Q10.** Which local embedding model is used for semantic retrieval (section 5.9)? It must run on a laptop without sending questions to a remote service. Also decide whether support gets a preview tool that shows what a question retrieves (tables, columns, metrics, examples), which would make description-writing much easier to get right.
+  - **Decided (user, slice 9):** `bge-small-en-v1.5`, run locally. The preview tool is still undecided.
 - **Q11.** The retrieval sizes and threshold (4 tables, 10 columns per table, 5 metrics, 5 examples) are starting defaults. How many tables and columns do the target databases have? That determines whether the full-schema fallback is ever affordable, and whether the defaults are enough.
 
 ## 13. Decision log (from interview)

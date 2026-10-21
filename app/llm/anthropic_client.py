@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 from typing import Any
 
@@ -9,6 +10,7 @@ PROMPTS_DIR = Path(__file__).resolve().parents[2] / "prompts"
 SQL_PROMPT = "sql_v3.md"
 INTENT_PROMPT = "intent_v1.md"
 REPAIR_PROMPT = "repair_v2.md"
+EXPLAIN_PROMPT = "explain_v1.md"
 MAX_TOKENS = 1024
 
 
@@ -23,8 +25,9 @@ class AnthropicLLM:
         self._sql_template = (prompts_dir / SQL_PROMPT).read_text()
         self._intent_template = (prompts_dir / INTENT_PROMPT).read_text()
         self._repair_template = (prompts_dir / REPAIR_PROMPT).read_text()
-        # All three versions go in the audit log, so an answer can be traced to the prompts that produced it.
-        self.prompt_version = ",".join(Path(p).stem for p in (SQL_PROMPT, INTENT_PROMPT, REPAIR_PROMPT))
+        self._explain_template = (prompts_dir / EXPLAIN_PROMPT).read_text()
+        # All versions go in the audit log, so an answer can be traced to the prompts that produced it.
+        self.prompt_version = ",".join(Path(p).stem for p in (SQL_PROMPT, INTENT_PROMPT, REPAIR_PROMPT, EXPLAIN_PROMPT))
         # The SDK reads ANTHROPIC_API_KEY from the environment; tests pass a stub instead.
         self._client = client if client is not None else anthropic.Anthropic()
 
@@ -45,6 +48,12 @@ class AnthropicLLM:
             f"<error>\n{error}\n</error>"
         )
         return self._sql_reply(self._send(system, user_text))
+
+    def explain(self, question: str, sql: str, columns: list[str], rows: list[tuple[Any, ...]]) -> str:
+        # Rows are sent as JSON inside a tag, so they are plainly data to the model.
+        payload = json.dumps({"columns": columns, "rows": rows}, default=str)
+        user_text = f"<question>\n{question}\n</question>\n<sql>\n{sql}\n</sql>\n<rows>\n{payload}\n</rows>"
+        return self._send(self._explain_template, user_text)
 
     def _sql_reply(self, text: str) -> str:
         if not text:

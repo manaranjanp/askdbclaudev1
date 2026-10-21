@@ -31,6 +31,9 @@ class ScriptedLLM:
     def classify_intent(self, question: str) -> str:
         return "data"
 
+    def explain(self, question: str, sql: str, columns: list, rows: list) -> str:
+        return "Explained."
+
     def generate_sql(self, question: str, schema: str, examples: str) -> str:
         self.calls.append("generate")
         return self._next()

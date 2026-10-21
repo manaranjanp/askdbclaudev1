@@ -20,23 +20,24 @@
   - Files: `app/llm/anthropic_client.py`, `prompts/sql_v1.md`, `tests/unit/test_llm_client.py`, prompt-version plumbing into `app/db/store.py`
   - Verify: unit tests with SDK stubbed (malformed response = generation failure; API error = "The AI service is unavailable. Try again shortly." with no executed-query log); `uv run pytest tests/golden --live` on the sample DB; audit rows show `sql_v1`.
   - Note (slice 1): `AppStore` in `app/db/store.py` uses `create_all`, which does not add columns to an existing `app_store.sqlite`. Before adding prompt-version columns here, delete the dev store or add a migration.
-- [ ] **Slice 7: Explanation and intent classifier with declines**
+  - Pending (slice 6 run): `uv run pytest tests/golden --live` has not been run. It needs `ANTHROPIC_API_KEY`, which was not set in the run environment.
+- [x] **Slice 7: Explanation and intent classifier with declines**
   - Files: `prompts/explain_v1.md`, `app/pipeline/explain.py`, `tests/unit/test_explain.py`, response model, `prompts/intent_v1.md`, `app/pipeline/intent.py`, `tests/unit/test_intent.py`, decline builder, golden cases
   - Verify: explain call receives the actual rows; zero rows returns "No matching records" with SQL; injection text in a cell is passed as data; classifier receives only the question text; non-data never reaches generate; decline does not echo the injected text; `declined: non-data` is audit-logged; golden cases for small talk, data-change request, injection, and a data question that must not be declined.
-  - Note (slice 6): the explain stage sends result rows to the hosted LLM. Q2 in SPEC section 12 is still open, so the explain call is blocked until it is decided.
-  - Partly done (slice 7 run): intent classifier (`prompts/intent_v1.md`), strict parse, decline with `declined: non-data` audit, and the "No matching records." message are built and golden-tested. Still to do: explain stage and its tests (`explain_v1.md`, `explain.py`), blocked on Q2.
+  - Note (slice 6): the explain stage sends result rows to the hosted LLM. Decided in SPEC Q2: yes, as this slice assumes.
+  - Done (slice 7 run): explanation stage (`prompts/explain_v1.md`), rows as JSON inside tags, zero rows skip the model, outage keeps the rows. Intent, declines and the no-match message were built earlier.
 - [x] **Slice 8: Single repair attempt**
   - Files: `app/pipeline/repair.py`, `tests/unit/test_repair.py`, `flags` for `repair_used`, golden case with recorded bad-then-good response
   - Verify: bad then good SQL gives one repair and success; bad twice gives failure with SQL and no third call; a repair returning `DELETE` is rejected by the validator.
-- [ ] **Slice 9: Retrieval part 1 (tables, columns, join neighbours)**
+- [x] **Slice 9: Retrieval part 1 (tables, columns, join neighbours)**
   - Files: `app/retrieval/embedder.py` (`Embedder` protocol, `BgeSmallEmbedder` for `bge-small-en-v1.5`, `FakeEmbedder`), `app/retrieval/index.py`, `app/retrieval/select.py`, `app/pipeline/run.py`, `prompts/sql_v2.md`, `tests/unit/test_retrieval_tables.py`
   - Verify: with the fake embedder, expected tables and columns are selected, neighbours added once, wide tables bounded; one opt-in test with the real model; audit row holds item IDs; full schema not sent.
   - Note (slice 6): `sql_v1` sent the whole schema. Slice 9 switched to `sql_v2`, and slice 10 to `sql_v3`, with the retrieved subset.
-  - Partly done (slice 9 run): `Embedder` protocol, `FakeEmbedder`, `SchemaIndex` with FK join neighbours, bounded selection, `sql_v2`, item IDs in the audit log. Not done: `BgeSmallEmbedder` and the opt-in real-model test, both waiting on SPEC Q10. `create_app` runs without retrieval until an embedder is passed.
+  - Done (slice 9 run): `BgeSmallEmbedder` (`bge-small-en-v1.5`, SPEC Q10 decided, loaded on first use). The real-model test runs with `--real-model`. `main.py` passes it in, so retrieval is on in the running app.
 - [x] **Slice 10: Retrieval part 2 (metrics, notes, join hints, fallback) and few-shot examples**
   - Files: `app/retrieval/select.py`, `app/pipeline/repair.py`, `prompts/sql_v3.md`, `tests/unit/test_retrieval_context.py`, `app/config/examples.py`, `prompts/sql_v4.md`, `config/examples/sample.yaml`, `tests/unit/test_examples.py`, golden cases for synonym match and retrieval miss
   - Verify: exact synonym forces metric into context; no match above threshold gives top-4 tables and `low_retrieval_confidence`; out-of-context table reference triggers one full-schema repair, shown in audit; broken example is skipped and logged with file, index and reason, and the app still starts; DB with no examples raises no error and no banner; repair uses the same examples; an example containing `DROP` is rejected.
-  - Note (slice 10 run): built with `FakeEmbedder` and the golden suite. Production retrieval stays off until an embedder is passed (SPEC Q10), so `main.py` sends the full schema and no examples for now. Re-run the verify items once the real model is wired in.
+  - Note (slice 10 run): verified with `FakeEmbedder` and the golden suite. `main.py` now uses `bge-small-en-v1.5`, so examples and retrieval are live in the running app. Quality with the real model is not measured yet.
 - [ ] **Slice 11: Dates, clarification and join warnings**
   - Files: `app/pipeline/dates.py`, `app/pipeline/generate.py`, `app/pipeline/joins.py`, `prompts/sql_v5.md`, `tests/unit/test_dates.py`, `tests/unit/test_joins.py`, golden cases for "revenue", "last quarter", many-to-many join
   - Verify: ambiguous question never reaches the executor; resolved date range appears in the response; many-to-many sets `join_duplication`, hinted one-to-many does not.

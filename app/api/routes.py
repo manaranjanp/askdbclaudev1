@@ -38,6 +38,7 @@ class AskResponse(BaseModel):
     repair_used: bool
     low_retrieval_confidence: bool
     full_schema_repair: bool
+    explanation: str | None
 
 
 class DatabaseInfo(BaseModel):
@@ -105,4 +106,5 @@ def ask(body: AskRequest, request: Request, username: str = Depends(current_user
         repair_used=answer.repair_used,
         low_retrieval_confidence=answer.low_retrieval_confidence,
         full_schema_repair=answer.full_schema_repair,
+        explanation=answer.explanation,
     )

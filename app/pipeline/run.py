@@ -42,6 +42,8 @@ class Answer:
     retrieved: list[str] = field(default_factory=list)
     low_retrieval_confidence: bool = False
     full_schema_repair: bool = False
+    # None when there are no rows to explain, or the model was unavailable. The rows are still returned.
+    explanation: str | None = None
 
 
 @dataclass
@@ -88,6 +90,7 @@ class Pipeline:
             low_retrieval_confidence=trace.low_confidence,
             full_schema_repair=trace.full_schema_repair,
         )
+        answer = self._explain(question, answer)
         self._store.log(
             AuditEntry(
                 user=user,
@@ -139,6 +142,17 @@ class Pipeline:
         if answer.outcome not in REPAIRABLE_OUTCOMES or answer.sql is None:
             return answer
         return self._repair(engine, question, context, known_tables, answer, trace)
+
+    def _explain(self, question: str, answer: Answer) -> Answer:
+        # Runs after the answer is final and before it is logged (CLAUDE.md guardrail 2).
+        # Zero rows get the "No matching records" message instead, so nothing is sent to the model.
+        if answer.outcome != OUTCOME_SUCCESS or not answer.rows or answer.sql is None:
+            return answer
+        try:
+            text = self._llm.explain(question, answer.sql, answer.columns, answer.rows)
+        except LLMUnavailable:
+            return answer
+        return replace(answer, explanation=text or None)
 
     def _context(self, database: str, engine: Engine, question: str) -> _Context:
         # With retrieval, only the question's tables, columns, metrics and examples are sent (SPEC 10.1).

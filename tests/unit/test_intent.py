@@ -30,6 +30,9 @@ class RecordingLLM:
             raise self._intent
         return self._intent
 
+    def explain(self, question: str, sql: str, columns: list, rows: list) -> str:
+        return "Explained."
+
     def generate_sql(self, question: str, schema: str, examples: str) -> str:
         self.calls.append(("generate", (question, schema)))
         return self._sql
