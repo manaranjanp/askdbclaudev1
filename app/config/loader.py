@@ -40,6 +40,18 @@ def load_limits(config_dir: Path) -> Limits:
     )
 
 
+DEFAULT_LLM_MODEL = "claude-sonnet-5-5"
+
+
+def load_llm_model(config_dir: Path) -> str:
+    # One model for the whole app, chosen in app config (SPEC 10.1).
+    file = config_dir / APP_SETTINGS_FILE
+    if not file.exists():
+        return DEFAULT_LLM_MODEL
+    raw: dict[str, Any] = yaml.safe_load(file.read_text()) or {}
+    return str(raw.get("llm_model", DEFAULT_LLM_MODEL))
+
+
 def load_databases(config_dir: Path) -> list[DatabaseConfig]:
     return [_load_one(file) for file in sorted(config_dir.glob("*.yaml")) if file.name != APP_SETTINGS_FILE]
 

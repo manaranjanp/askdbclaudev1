@@ -5,12 +5,15 @@ from typing import Any
 import pytest
 import yaml
 
-from app.config.loader import Limits
+from app.config.loader import Limits, load_llm_model
 from app.db.analytics import open_readonly
 from app.db.store import AppStore
+from app.llm.anthropic_client import AnthropicLLM
+from app.llm.client import LLMClient
 from app.pipeline.run import OUTCOME_SUCCESS, Answer, Pipeline
 
 CASES_PATH = Path(__file__).parent / "cases.yaml"
+CONFIG_DIR = Path(__file__).resolve().parents[2] / "config"
 GOLDEN_RESULTS = pytest.StashKey[tuple[int, int]]()
 GATE = 0.95
 # The 95% gate only applies once the set is big enough for a rate to mean something (PLAN slice 2).
@@ -27,10 +30,12 @@ class Case:
 
 class RecordedLLM:
     # Replay mode: the SQL is recorded in cases.yaml, so the suite needs no API key.
+    prompt_version = "recorded"
+
     def __init__(self, sql: str) -> None:
         self._sql = sql
 
-    def generate_sql(self, question: str) -> str:
+    def generate_sql(self, question: str, schema: str) -> str:
         return self._sql
 
 
@@ -47,10 +52,12 @@ def load_cases(path: Path = CASES_PATH) -> list[Case]:
     ]
 
 
-def run_case(case: Case, db_path: Path, store_path: Path) -> Answer:
+def run_case(case: Case, db_path: Path, store_path: Path, live: bool = False) -> Answer:
+    # Live mode asks the real model and ignores the recorded SQL; it needs ANTHROPIC_API_KEY.
+    llm: LLMClient = AnthropicLLM(model=load_llm_model(CONFIG_DIR)) if live else RecordedLLM(case.sql)
     pipeline = Pipeline(
         {"sample": open_readonly(db_path)},
-        RecordedLLM(case.sql),
+        llm,
         AppStore(store_path),
         Limits(),
         unavailable={},

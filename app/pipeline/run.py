@@ -6,9 +6,9 @@ from sqlalchemy import Engine
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.config.loader import Limits
-from app.db.analytics import table_names
+from app.db.analytics import describe_schema, table_names
 from app.db.store import AppStore, AuditEntry
-from app.llm.client import LLMClient
+from app.llm.client import GenerationError, LLMClient, LLMUnavailable
 from app.pipeline.execute import QueryTimeout, run_select
 from app.pipeline.validate import validate
 
@@ -16,6 +16,8 @@ OUTCOME_SUCCESS = "success"
 OUTCOME_VALIDATION_FAILURE = "validation failure"
 OUTCOME_EXECUTION_ERROR = "execution error"
 OUTCOME_TIMEOUT = "timeout"
+
+AI_UNAVAILABLE_MESSAGE = "The AI service is unavailable. Try again shortly."
 
 
 @dataclass(frozen=True)
@@ -55,6 +57,7 @@ class Pipeline:
                 sql=answer.sql,
                 row_count=len(answer.rows) if answer.outcome == OUTCOME_SUCCESS else None,
                 error=answer.error,
+                prompt_version=self._llm.prompt_version,
             )
         )
         return answer
@@ -67,11 +70,18 @@ class Pipeline:
         engine = self._engines.get(database)
         if engine is None:
             return Answer(OUTCOME_EXECUTION_ERROR, error=f"Unknown database: {database}")
-        sql = self._llm.generate_sql(question)
         try:
+            schema = describe_schema(engine)
             known_tables = table_names(engine)
         except SQLAlchemyError as exc:
-            return Answer(OUTCOME_EXECUTION_ERROR, sql=sql, error=str(exc))
+            return Answer(OUTCOME_EXECUTION_ERROR, error=str(exc))
+        try:
+            sql = self._llm.generate_sql(question, schema)
+        except LLMUnavailable:
+            # Nothing was generated, so nothing is recorded as an executed query (SPEC 10.3).
+            return Answer(OUTCOME_EXECUTION_ERROR, error=AI_UNAVAILABLE_MESSAGE)
+        except GenerationError as exc:
+            return Answer(OUTCOME_EXECUTION_ERROR, error=str(exc))
         verdict = validate(sql, known_tables)
         if not verdict.ok:
             return Answer(OUTCOME_VALIDATION_FAILURE, sql=sql, error=verdict.reason)

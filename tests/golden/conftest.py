@@ -17,11 +17,11 @@ def golden_db(tmp_path_factory: pytest.TempPathFactory) -> Path:
 
 
 @pytest.fixture
-def check_case(golden_db: Path, tmp_path: Path) -> Callable[[Case], list[str]]:
+def check_case(golden_db: Path, tmp_path: Path, request: pytest.FixtureRequest) -> Callable[[Case], list[str]]:
+    live = bool(request.config.getoption("--live"))
+
     def check(case: Case) -> list[str]:
-        return mismatches(
-            case, run_case(case, golden_db, tmp_path / "app_store.sqlite")
-        )
+        return mismatches(case, run_case(case, golden_db, tmp_path / "app_store.sqlite", live=live))
 
     return check
 

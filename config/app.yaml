@@ -1,3 +1,4 @@
-# App-wide limits (SPEC 7.1, 7.3). Apply to every database.
+# App-wide settings. Apply to every database.
 row_cap: 1000
 query_timeout_seconds: 30
+llm_model: claude-sonnet-5-5

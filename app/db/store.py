@@ -17,7 +17,9 @@ from sqlalchemy import (
     Text,
     create_engine,
     insert,
+    inspect,
     select,
+    text,
 )
 
 metadata = MetaData()
@@ -34,6 +36,7 @@ audit_log = Table(
     Column("row_count", Integer),
     Column("outcome", String, nullable=False),
     Column("error", Text),
+    Column("prompt_version", String),
 )
 
 users = Table(
@@ -63,13 +66,24 @@ class AuditEntry:
     sql: str | None
     row_count: int | None
     error: str | None
+    prompt_version: str | None = None
 
 
 class AppStore:
     def __init__(self, path: Path) -> None:
         self._engine = create_engine(f"sqlite:///{path}")
         metadata.create_all(self._engine)
+        self._add_missing_audit_columns()
         self._hasher = PasswordHasher()
+
+    def _add_missing_audit_columns(self) -> None:
+        # create_all does not alter existing tables, so a store made before a column existed gets it here.
+        existing = {column["name"] for column in inspect(self._engine).get_columns("audit_log")}
+        with self._engine.begin() as conn:
+            for column in audit_log.columns:
+                if column.name not in existing:
+                    column_type = column.type.compile(dialect=self._engine.dialect)
+                    conn.execute(text(f"ALTER TABLE audit_log ADD COLUMN {column.name} {column_type}"))
 
     @property
     def engine(self) -> Engine:
