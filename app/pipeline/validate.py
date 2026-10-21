@@ -24,6 +24,8 @@ _FORBIDDEN = (
 class Verdict:
     ok: bool
     reason: str | None = None
+    # Database tables the statement reads, lower-cased. Set only when the statement is ok.
+    tables: frozenset[str] = frozenset()
 
 
 def validate(sql: str, known_tables: Collection[str]) -> Verdict:
@@ -42,8 +44,12 @@ def validate(sql: str, known_tables: Collection[str]) -> Verdict:
     # A CTE name parses as a table reference, so it is not a database table.
     cte_names = {cte.alias_or_name.lower() for cte in statement.find_all(exp.CTE)}
     known = {name.lower() for name in known_tables}
+    referenced: set[str] = set()
     for table in statement.find_all(exp.Table):
         name = table.name.lower()
-        if name not in known and name not in cte_names:
+        if name in cte_names:
+            continue
+        if name not in known:
             return Verdict(False, f"Unknown table: {table.name}")
-    return Verdict(True)
+        referenced.add(name)
+    return Verdict(True, tables=frozenset(referenced))

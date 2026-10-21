@@ -18,10 +18,10 @@ class LLMClient(Protocol):
     # The intent classifier sees the question text only (CLAUDE.md guardrail 3).
     def classify_intent(self, question: str) -> str: ...
 
-    def generate_sql(self, question: str, schema: str) -> str: ...
+    def generate_sql(self, question: str, schema: str, examples: str) -> str: ...
 
     # One repair attempt per question (SPEC 5.7 and slice 8). The model sees the failed SQL and its error.
-    def repair_sql(self, question: str, schema: str, failed_sql: str, error: str) -> str: ...
+    def repair_sql(self, question: str, schema: str, examples: str, failed_sql: str, error: str) -> str: ...
 
 
 class MockLLM:
@@ -34,8 +34,8 @@ class MockLLM:
     def classify_intent(self, question: str) -> str:
         return "data"
 
-    def generate_sql(self, question: str, schema: str) -> str:
+    def generate_sql(self, question: str, schema: str, examples: str) -> str:
         return self._sql
 
-    def repair_sql(self, question: str, schema: str, failed_sql: str, error: str) -> str:
+    def repair_sql(self, question: str, schema: str, examples: str, failed_sql: str, error: str) -> str:
         return self._sql

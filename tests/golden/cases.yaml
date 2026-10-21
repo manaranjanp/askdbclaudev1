@@ -102,3 +102,20 @@ cases:
       outcome: validation failure
       repair_used: true
       error: Only SELECT statements are allowed.
+
+  - id: synonym-forces-metric-into-context
+    question: What is our sales total by region?
+    retrieval: true
+    sql: SELECT region, SUM(amount) AS total FROM sales GROUP BY region ORDER BY region
+    expect:
+      outcome: success
+      schema_contains: ["metric revenue", "Definition: SUM(sales.amount)"]
+      low_retrieval_confidence: false
+
+  - id: retrieval-miss-flags-low-confidence
+    question: Weather forecast for Paris next week?
+    retrieval: true
+    sql: SELECT region FROM sales GROUP BY region ORDER BY region
+    expect:
+      outcome: success
+      low_retrieval_confidence: true

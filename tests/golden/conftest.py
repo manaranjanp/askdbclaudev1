@@ -21,7 +21,8 @@ def check_case(golden_db: Path, tmp_path: Path, request: pytest.FixtureRequest) 
     live = bool(request.config.getoption("--live"))
 
     def check(case: Case) -> list[str]:
-        return mismatches(case, run_case(case, golden_db, tmp_path / "app_store.sqlite", live=live))
+        answer, llm = run_case(case, golden_db, tmp_path / "app_store.sqlite", live=live)
+        return mismatches(case, answer, llm)
 
     return check
 

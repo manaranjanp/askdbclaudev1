@@ -37,6 +37,29 @@ class Answer:
     truncated: bool = False
     total_rows: int | None = None
     repair_used: bool = False
+    # True when the SQL reads a table that was not in the retrieved context (SPEC 6.2).
+    out_of_context: bool = False
+    retrieved: list[str] = field(default_factory=list)
+    low_retrieval_confidence: bool = False
+    full_schema_repair: bool = False
+
+
+@dataclass
+class _Trace:
+    # Filled in while the question is answered, then copied onto the answer and the audit row.
+    retrieved: list[str] = field(default_factory=list)
+    low_confidence: bool = False
+    full_schema_repair: bool = False
+
+
+@dataclass(frozen=True)
+class _Context:
+    schema: str
+    examples: str
+    item_ids: list[str]
+    # Lower-cased tables in context. None means the whole schema is in context.
+    context_tables: frozenset[str] | None
+    low_confidence: bool
 
 
 class Pipeline:
@@ -57,8 +80,14 @@ class Pipeline:
         self._retrieval = retrieval
 
     def ask(self, user: str, database: str, question: str) -> Answer:
-        retrieved: list[str] = []
-        answer = self._answer(database, question, retrieved)
+        trace = _Trace()
+        answer = self._answer(database, question, trace)
+        answer = replace(
+            answer,
+            retrieved=trace.retrieved,
+            low_retrieval_confidence=trace.low_confidence,
+            full_schema_repair=trace.full_schema_repair,
+        )
         self._store.log(
             AuditEntry(
                 user=user,
@@ -70,14 +99,15 @@ class Pipeline:
                 error=answer.error,
                 prompt_version=self._llm.prompt_version,
                 repair_used=answer.repair_used,
-                retrieved_items=",".join(retrieved) or None,
+                retrieved_items=",".join(answer.retrieved) or None,
+                low_retrieval_confidence=answer.low_retrieval_confidence,
+                full_schema_repair=answer.full_schema_repair,
             )
         )
         return answer
 
-    def _answer(self, database: str, question: str, retrieved: list[str]) -> Answer:
-        # Stage order is fixed (CLAUDE.md guardrail 2). Retrieval (slice 9) is not built yet and passes
-        # straight through. The explanation stage waits on SPEC Q2.
+    def _answer(self, database: str, question: str, trace: _Trace) -> Answer:
+        # Stage order is fixed (CLAUDE.md guardrail 2). The explanation stage waits on SPEC Q2.
         if database in self._unavailable:
             return Answer(OUTCOME_EXECUTION_ERROR, error=f"Database unavailable: {self._unavailable[database]}")
         engine = self._engines.get(database)
@@ -91,48 +121,59 @@ class Pipeline:
             # The decline text never repeats the question, so injected text is not echoed back.
             return Answer(OUTCOME_DECLINED, message=DECLINE_MESSAGE)
         try:
-            schema, item_ids = self._context(database, engine, question)
+            context = self._context(database, engine, question)
             known_tables = table_names(engine)
         except SQLAlchemyError as exc:
             return Answer(OUTCOME_EXECUTION_ERROR, error=str(exc))
-        retrieved.extend(item_ids)
+        trace.retrieved = context.item_ids
+        trace.low_confidence = context.low_confidence
         try:
-            sql = self._llm.generate_sql(question, schema)
+            sql = self._llm.generate_sql(question, context.schema, context.examples)
         except LLMUnavailable:
             # Nothing was generated, so nothing is recorded as an executed query (SPEC 10.3).
             return Answer(OUTCOME_EXECUTION_ERROR, error=AI_UNAVAILABLE_MESSAGE)
         except GenerationError as exc:
             return Answer(OUTCOME_EXECUTION_ERROR, error=str(exc))
 
-        answer = self._attempt(engine, sql, known_tables)
+        answer = self._attempt(engine, sql, known_tables, context.context_tables)
         if answer.outcome not in REPAIRABLE_OUTCOMES or answer.sql is None:
             return answer
-        return self._repair(engine, question, schema, known_tables, answer)
+        return self._repair(engine, question, context, known_tables, answer, trace)
 
-    def _context(self, database: str, engine: Engine, question: str) -> tuple[str, list[str]]:
-        # With retrieval, only the question's tables and columns are sent (SPEC 10.1). Without it, the whole schema.
+    def _context(self, database: str, engine: Engine, question: str) -> _Context:
+        # With retrieval, only the question's tables, columns, metrics and examples are sent (SPEC 10.1).
         if self._retrieval is not None and database in self._retrieval.indexes:
             selection = self._retrieval.indexes[database].select(question, self._retrieval.settings)
-            return selection.schema_text(), selection.item_ids
-        return describe_schema(engine), []
+            return _Context(
+                schema=selection.schema_text(),
+                examples=selection.examples_text(),
+                item_ids=selection.item_ids,
+                context_tables=frozenset(table.name.lower() for table in selection.tables),
+                low_confidence=selection.low_confidence,
+            )
+        return _Context(
+            schema=describe_schema(engine),
+            examples="",
+            item_ids=[],
+            context_tables=None,
+            low_confidence=False,
+        )
 
-    def _repair(
-        self, engine: Engine, question: str, schema: str, known_tables: set[str], failed: Answer
+    def _attempt(
+        self, engine: Engine, sql: str, known_tables: set[str], context_tables: frozenset[str] | None
     ) -> Answer:
-        # Exactly one repair call. Its result is final, whether it runs or not (SPEC 5.7, slice 8).
-        assert failed.sql is not None
-        try:
-            repaired_sql = self._llm.repair_sql(question, schema, failed.sql, failed.error or "")
-        except LLMUnavailable:
-            return Answer(OUTCOME_EXECUTION_ERROR, sql=failed.sql, error=AI_UNAVAILABLE_MESSAGE, repair_used=True)
-        except GenerationError:
-            return replace(failed, repair_used=True)
-        return replace(self._attempt(engine, repaired_sql, known_tables), repair_used=True)
-
-    def _attempt(self, engine: Engine, sql: str, known_tables: set[str]) -> Answer:
         verdict = validate(sql, known_tables)
         if not verdict.ok:
             return Answer(OUTCOME_VALIDATION_FAILURE, sql=sql, error=verdict.reason)
+        if context_tables is not None:
+            missing = verdict.tables - context_tables
+            if missing:
+                return Answer(
+                    OUTCOME_VALIDATION_FAILURE,
+                    sql=sql,
+                    error=f"Table not in the schema provided: {', '.join(sorted(missing))}",
+                    out_of_context=True,
+                )
         try:
             result = run_select(engine, sql, self._limits)
         except QueryTimeout:
@@ -153,3 +194,27 @@ class Pipeline:
             total_rows=result.total_rows,
         )
 
+    def _repair(
+        self,
+        engine: Engine,
+        question: str,
+        context: _Context,
+        known_tables: set[str],
+        failed: Answer,
+        trace: _Trace,
+    ) -> Answer:
+        # Exactly one repair call. Its result is final, whether it runs or not (SPEC 5.7, slice 8).
+        assert failed.sql is not None
+        schema, context_tables = context.schema, context.context_tables
+        if failed.out_of_context:
+            # A table outside the retrieved context: the repair sees the whole schema (SPEC 5.9).
+            schema, context_tables = describe_schema(engine), None
+            trace.full_schema_repair = True
+        try:
+            repaired_sql = self._llm.repair_sql(question, schema, context.examples, failed.sql, failed.error or "")
+        except LLMUnavailable:
+            return Answer(OUTCOME_EXECUTION_ERROR, sql=failed.sql, error=AI_UNAVAILABLE_MESSAGE, repair_used=True)
+        except GenerationError:
+            return replace(failed, repair_used=True)
+        repaired = self._attempt(engine, repaired_sql, known_tables, context_tables)
+        return replace(repaired, repair_used=True)

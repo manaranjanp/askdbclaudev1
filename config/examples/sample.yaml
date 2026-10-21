@@ -1,0 +1,6 @@
+# Few-shot examples for the sample database (SPEC 5.8). Each one is validated at startup.
+examples:
+  - question: Total sales by region
+    sql: SELECT region, SUM(amount) AS total FROM sales GROUP BY region ORDER BY region
+  - question: How many sales were made in each region?
+    sql: SELECT region, COUNT(*) AS sales_count FROM sales GROUP BY region ORDER BY region

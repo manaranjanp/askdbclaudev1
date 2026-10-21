@@ -11,7 +11,7 @@ from app.db.analytics import open_readonly
 from app.db.store import AppStore, audit_log
 from app.factory import create_app
 from app.retrieval.embedder import FakeEmbedder, cosine
-from app.retrieval.index import SchemaIndex
+from app.retrieval.index import DeclaredContext, SchemaIndex
 from tests.fixtures.login import logged_in_client
 
 WIDE_COLUMNS = [f"metric_{i}" for i in range(30)]
@@ -55,7 +55,7 @@ def declared() -> dict[str, TableSpec]:
 
 def index_for(db: Path) -> SchemaIndex:
     with_engine = open_readonly(db)
-    return SchemaIndex.build(with_engine, declared(), FakeEmbedder())
+    return SchemaIndex.build(with_engine, DeclaredContext(tables=declared()), [], FakeEmbedder())
 
 
 def settings(top_tables: int = 1, columns_per_table: int = 10, max_tables: int = 8) -> RetrievalSettings:
@@ -144,11 +144,11 @@ def test_app_sends_only_retrieved_schema_and_audits_item_ids(db: Path, tmp_path:
         def classify_intent(self, question: str) -> str:
             return "data"
 
-        def generate_sql(self, question: str, schema: str) -> str:
+        def generate_sql(self, question: str, schema: str, examples: str) -> str:
             seen["schema"] = schema
             return "SELECT region, SUM(amount) FROM sales GROUP BY region"
 
-        def repair_sql(self, question: str, schema: str, failed_sql: str, error: str) -> str:
+        def repair_sql(self, question: str, schema: str, examples: str, failed_sql: str, error: str) -> str:
             return failed_sql
 
     store_path = tmp_path / "app_store.sqlite"

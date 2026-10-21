@@ -31,11 +31,11 @@ class ScriptedLLM:
     def classify_intent(self, question: str) -> str:
         return "data"
 
-    def generate_sql(self, question: str, schema: str) -> str:
+    def generate_sql(self, question: str, schema: str, examples: str) -> str:
         self.calls.append("generate")
         return self._next()
 
-    def repair_sql(self, question: str, schema: str, failed_sql: str, error: str) -> str:
+    def repair_sql(self, question: str, schema: str, examples: str, failed_sql: str, error: str) -> str:
         self.calls.append("repair")
         self.repair_inputs.append((failed_sql, error))
         return self._next()

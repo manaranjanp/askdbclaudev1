@@ -18,7 +18,7 @@ from tests.fixtures.make_sample_db import make_sample_db
 MODEL = "claude-test-model"
 SCHEMA = "sales(id INTEGER, region TEXT, amount REAL)"
 GOOD_SQL = "SELECT region, SUM(amount) AS total FROM sales GROUP BY region ORDER BY region"
-PROMPT_VERSION = "sql_v2,intent_v1,repair_v1"
+PROMPT_VERSION = "sql_v3,intent_v1,repair_v2"
 
 
 class StubMessages:
@@ -56,7 +56,7 @@ def llm_with(*results: Any) -> tuple[AnthropicLLM, StubClient]:
 def test_returns_the_model_text_and_sends_schema_and_question_as_data() -> None:
     llm, stub = llm_with(text_reply(GOOD_SQL))
 
-    assert llm.generate_sql("Total by region?", SCHEMA) == GOOD_SQL
+    assert llm.generate_sql("Total by region?", SCHEMA, "") == GOOD_SQL
 
     call = stub.messages.calls[0]
     assert call["model"] == MODEL
@@ -85,21 +85,21 @@ def test_empty_reply_is_a_generation_error() -> None:
     llm, _ = llm_with(text_reply("   "))
 
     with pytest.raises(GenerationError):
-        llm.generate_sql("q", SCHEMA)
+        llm.generate_sql("q", SCHEMA, "")
 
 
 def test_reply_without_a_text_block_is_a_generation_error() -> None:
     llm, _ = llm_with(SimpleNamespace(content=[SimpleNamespace(type="tool_use", name="x")]))
 
     with pytest.raises(GenerationError):
-        llm.generate_sql("q", SCHEMA)
+        llm.generate_sql("q", SCHEMA, "")
 
 
 def test_api_error_is_llm_unavailable() -> None:
     llm, _ = llm_with(connection_error())
 
     with pytest.raises(LLMUnavailable):
-        llm.generate_sql("q", SCHEMA)
+        llm.generate_sql("q", SCHEMA, "")
 
 
 @pytest.fixture

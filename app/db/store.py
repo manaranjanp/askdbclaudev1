@@ -40,6 +40,8 @@ audit_log = Table(
     Column("prompt_version", String),
     Column("repair_used", Boolean, nullable=False, server_default="0"),
     Column("retrieved_items", Text),
+    Column("low_retrieval_confidence", Boolean, nullable=False, server_default="0"),
+    Column("full_schema_repair", Boolean, nullable=False, server_default="0"),
 )
 
 users = Table(
@@ -72,6 +74,8 @@ class AuditEntry:
     prompt_version: str | None = None
     repair_used: bool = False
     retrieved_items: str | None = None
+    low_retrieval_confidence: bool = False
+    full_schema_repair: bool = False
 
 
 class AppStore:

@@ -10,3 +10,11 @@ tables:
         description: Sales region name, such as North or South.
       amount:
         description: Sale value in the reporting currency.
+metrics:
+  revenue:
+    description: Total sales amount across all orders.
+    synonyms:
+      - revenue
+      - sales total
+    table: sales
+    sql: SUM(sales.amount)

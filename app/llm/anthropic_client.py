@@ -6,10 +6,15 @@ import anthropic
 from app.llm.client import GenerationError, LLMUnavailable
 
 PROMPTS_DIR = Path(__file__).resolve().parents[2] / "prompts"
-SQL_PROMPT = "sql_v2.md"
+SQL_PROMPT = "sql_v3.md"
 INTENT_PROMPT = "intent_v1.md"
-REPAIR_PROMPT = "repair_v1.md"
+REPAIR_PROMPT = "repair_v2.md"
 MAX_TOKENS = 1024
+
+
+def _fill(template: str, schema: str, examples: str) -> str:
+    # Schema and examples come from the database config, so they are filled in once, not re-parsed.
+    return template.replace("{{schema}}", schema).replace("{{examples}}", examples or "(none)")
 
 
 class AnthropicLLM:
@@ -27,13 +32,13 @@ class AnthropicLLM:
         # Returns the raw reply; the pipeline parses it strictly.
         return self._send(self._intent_template, f"<message>\n{question}\n</message>")
 
-    def generate_sql(self, question: str, schema: str) -> str:
-        system = self._sql_template.replace("{{schema}}", schema)
+    def generate_sql(self, question: str, schema: str, examples: str) -> str:
+        system = _fill(self._sql_template, schema, examples)
         # The question goes in as data, wrapped so the prompt can refer to it as such.
         return self._sql_reply(self._send(system, f"<question>\n{question}\n</question>"))
 
-    def repair_sql(self, question: str, schema: str, failed_sql: str, error: str) -> str:
-        system = self._repair_template.replace("{{schema}}", schema)
+    def repair_sql(self, question: str, schema: str, examples: str, failed_sql: str, error: str) -> str:
+        system = _fill(self._repair_template, schema, examples)
         user_text = (
             f"<question>\n{question}\n</question>\n"
             f"<failed_sql>\n{failed_sql}\n</failed_sql>\n"

@@ -36,6 +36,8 @@ class AskResponse(BaseModel):
     truncated: bool
     total_rows: int | None
     repair_used: bool
+    low_retrieval_confidence: bool
+    full_schema_repair: bool
 
 
 class DatabaseInfo(BaseModel):
@@ -101,4 +103,6 @@ def ask(body: AskRequest, request: Request, username: str = Depends(current_user
         truncated=answer.truncated,
         total_rows=answer.total_rows,
         repair_used=answer.repair_used,
+        low_retrieval_confidence=answer.low_retrieval_confidence,
+        full_schema_repair=answer.full_schema_repair,
     )

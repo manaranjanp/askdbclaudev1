@@ -13,7 +13,8 @@ class Embedder(Protocol):
 
 class FakeEmbedder:
     # Bag of words hashed into fixed buckets. Deterministic and needs no model, so tests can rely on it.
-    def __init__(self, dims: int = 256) -> None:
+    # Wide enough that unrelated words rarely share a bucket, which would give a false similarity.
+    def __init__(self, dims: int = 4096) -> None:
         self._dims = dims
 
     def embed(self, texts: Sequence[str]) -> list[list[float]]:

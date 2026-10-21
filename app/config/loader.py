@@ -6,7 +6,13 @@ from typing import Any
 import yaml
 from pydantic import ValidationError
 
-from app.config.schema import DatabaseSpec, TableSpec
+from app.config.schema import (
+    DatabaseSpec,
+    JoinHintSpec,
+    MetricSpec,
+    NoteSpec,
+    TableSpec,
+)
 
 APP_SETTINGS_FILE = "app.yaml"
 
@@ -24,6 +30,11 @@ class RetrievalSettings:
     top_tables: int = 4
     columns_per_table: int = 10
     max_tables: int = 8
+    # Below this similarity to the best table, the answer is flagged low_retrieval_confidence (SPEC 5.9).
+    # A starting value. Tune it with the real embedding model (SPEC Q10).
+    min_similarity: float = 0.2
+    max_examples: int = 5
+    max_notes: int = 3
 
 
 @dataclass(frozen=True)
@@ -33,6 +44,9 @@ class DatabaseConfig:
     file: Path
     path: Path | None
     tables: dict[str, TableSpec]
+    metrics: dict[str, MetricSpec]
+    notes: dict[str, NoteSpec]
+    joins: list[JoinHintSpec]
     error: str | None = None
 
 
@@ -62,6 +76,9 @@ def load_retrieval(config_dir: Path) -> RetrievalSettings:
         top_tables=int(section.get("top_tables", defaults.top_tables)),
         columns_per_table=int(section.get("columns_per_table", defaults.columns_per_table)),
         max_tables=int(section.get("max_tables", defaults.max_tables)),
+        min_similarity=float(section.get("min_similarity", defaults.min_similarity)),
+        max_examples=int(section.get("max_examples", defaults.max_examples)),
+        max_notes=int(section.get("max_notes", defaults.max_notes)),
     )
 
 
@@ -89,11 +106,19 @@ def _load_one(file: Path) -> DatabaseConfig:
         return _broken(file, f"{file.name}: {_validation_reason(exc)}")
     # Env references keep machine-specific paths and secrets out of the YAML (SPEC 4.1).
     path = Path(os.path.expandvars(spec.path))
-    return DatabaseConfig(name=spec.name, file=file, path=path, tables=spec.tables)
+    return DatabaseConfig(
+        name=spec.name,
+        file=file,
+        path=path,
+        tables=spec.tables,
+        metrics=spec.metrics,
+        notes=spec.notes,
+        joins=spec.joins,
+    )
 
 
 def _broken(file: Path, reason: str) -> DatabaseConfig:
-    return DatabaseConfig(name=file.stem, file=file, path=None, tables={}, error=reason)
+    return DatabaseConfig(name=file.stem, file=file, path=None, tables={}, metrics={}, notes={}, joins=[], error=reason)
 
 
 def _yaml_reason(file: Path, exc: yaml.YAMLError) -> str:
