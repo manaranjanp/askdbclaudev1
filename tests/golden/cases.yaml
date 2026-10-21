@@ -43,3 +43,12 @@ cases:
     expect:
       outcome: validation failure
       error: "Unknown table: secret_salaries"
+
+  - id: row-cap-truncates
+    question: List every event id.
+    sql: SELECT id FROM events ORDER BY id
+    expect:
+      outcome: success
+      row_count: 1000
+      truncated: true
+      total_rows: 1500

@@ -4,7 +4,7 @@ from pathlib import Path
 import pytest
 from _pytest.terminal import TerminalReporter
 
-from tests.fixtures.make_sample_db import make_sample_db
+from tests.fixtures.make_sample_db import make_events_db, make_sample_db
 from tests.golden.harness import GOLDEN_RESULTS, Case, mismatches, run_case
 
 
@@ -12,6 +12,7 @@ from tests.golden.harness import GOLDEN_RESULTS, Case, mismatches, run_case
 def golden_db(tmp_path_factory: pytest.TempPathFactory) -> Path:
     path = tmp_path_factory.mktemp("golden") / "sample.sqlite"
     make_sample_db(path)
+    make_events_db(path, rows=1500)
     return path
 
 

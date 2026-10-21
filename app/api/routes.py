@@ -22,6 +22,8 @@ class AskResponse(BaseModel):
     columns: list[str]
     rows: list[list[Any]]
     error: str | None
+    truncated: bool
+    total_rows: int | None
 
 
 @router.post("/ask")
@@ -34,4 +36,6 @@ def ask(body: AskRequest, request: Request) -> AskResponse:
         columns=answer.columns,
         rows=[list(row) for row in answer.rows],
         error=answer.error,
+        truncated=answer.truncated,
+        total_rows=answer.total_rows,
     )

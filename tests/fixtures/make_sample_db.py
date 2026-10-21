@@ -17,5 +17,16 @@ def make_sample_db(path: Path) -> None:
         conn.close()
 
 
+def make_events_db(path: Path, rows: int) -> None:
+    # Adds a large table to an existing database, for row-cap and timeout tests.
+    conn = sqlite3.connect(path)
+    try:
+        conn.execute("CREATE TABLE events (id INTEGER PRIMARY KEY)")
+        conn.executemany("INSERT INTO events (id) VALUES (?)", [(i,) for i in range(1, rows + 1)])
+        conn.commit()
+    finally:
+        conn.close()
+
+
 if __name__ == "__main__":
     make_sample_db(Path("tests/fixtures/sample.sqlite"))

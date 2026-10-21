@@ -5,6 +5,7 @@ from typing import Any
 import pytest
 import yaml
 
+from app.config.loader import Limits
 from app.db.analytics import open_readonly
 from app.db.store import AppStore
 from app.pipeline.run import OUTCOME_SUCCESS, Answer, Pipeline
@@ -51,6 +52,7 @@ def run_case(case: Case, db_path: Path, store_path: Path) -> Answer:
         {"sample": open_readonly(db_path)},
         RecordedLLM(case.sql),
         AppStore(store_path),
+        Limits(),
     )
     return pipeline.ask(user="golden", database="sample", question=case.question)
 
@@ -77,4 +79,10 @@ def _actual(answer: Answer, key: str) -> Any:
         )
     if key == "error":
         return answer.error
+    if key == "row_count":
+        return len(answer.rows) if answer.outcome == OUTCOME_SUCCESS else None
+    if key == "truncated":
+        return answer.truncated
+    if key == "total_rows":
+        return answer.total_rows
     raise KeyError(f"Unknown golden expectation: {key}")

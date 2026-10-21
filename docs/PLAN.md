@@ -5,7 +5,7 @@
   - Files: `tests/golden/cases.yaml`, `tests/golden/test_golden.py`, `tests/golden/conftest.py`, `app/pipeline/run.py` (LLM injection seam), `app/pipeline/validate.py`, `tests/unit/test_validate.py`
   - Verify: `uv run pytest tests/golden` passes in replay mode; a changed expected result fails and prints the pass rate; gate at 95% applies once the set has 10 cases; parametrised attack list passes (multi-statement, DML inside CTE, comment tricks, `PRAGMA`, `ATTACH`, unknown table); valid CTEs pass; each rejection carries a reason in the response and audit log.
   - Note (slice 1): `app/pipeline/validate.py` checks statement shape and forbidden node types only. The table-existence check (SPEC 6.2) is still to add here.
-- [ ] **Slice 3: Execution limits and truncation**
+- [x] **Slice 3: Execution limits and truncation**
   - Files: `app/config/loader.py`, `app/pipeline/execute.py`, `app/api/routes.py`, `tests/unit/test_execute_limits.py`, one golden case
   - Verify: 1,500-row query returns 1,000 rows with `truncated=true` and total N; busy query hits a test timeout and logs `timeout`; cap and timeout are read from config.
   - Note (slice 1): `run_select` in `app/pipeline/execute.py` fetches every row and has no timeout yet. Both go in this slice.

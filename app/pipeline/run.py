@@ -5,15 +5,17 @@ from typing import Any
 from sqlalchemy import Engine
 from sqlalchemy.exc import SQLAlchemyError
 
+from app.config.loader import Limits
 from app.db.analytics import table_names
 from app.db.store import AppStore, AuditEntry
 from app.llm.client import LLMClient
-from app.pipeline.execute import run_select
+from app.pipeline.execute import QueryTimeout, run_select
 from app.pipeline.validate import validate
 
 OUTCOME_SUCCESS = "success"
 OUTCOME_VALIDATION_FAILURE = "validation failure"
 OUTCOME_EXECUTION_ERROR = "execution error"
+OUTCOME_TIMEOUT = "timeout"
 
 
 @dataclass(frozen=True)
@@ -23,13 +25,16 @@ class Answer:
     columns: list[str] = field(default_factory=list)
     rows: list[tuple[Any, ...]] = field(default_factory=list)
     error: str | None = None
+    truncated: bool = False
+    total_rows: int | None = None
 
 
 class Pipeline:
-    def __init__(self, engines: Mapping[str, Engine], llm: LLMClient, store: AppStore) -> None:
+    def __init__(self, engines: Mapping[str, Engine], llm: LLMClient, store: AppStore, limits: Limits) -> None:
         self._engines = engines
         self._llm = llm
         self._store = store
+        self._limits = limits
 
     def ask(self, user: str, database: str, question: str) -> Answer:
         answer = self._answer(database, question)
@@ -61,7 +66,20 @@ class Pipeline:
         if not verdict.ok:
             return Answer(OUTCOME_VALIDATION_FAILURE, sql=sql, error=verdict.reason)
         try:
-            columns, rows = run_select(engine, sql)
+            result = run_select(engine, sql, self._limits)
+        except QueryTimeout:
+            return Answer(
+                OUTCOME_TIMEOUT,
+                sql=sql,
+                error="The query took too long and was stopped. Try narrowing the question.",
+            )
         except SQLAlchemyError as exc:
             return Answer(OUTCOME_EXECUTION_ERROR, sql=sql, error=str(exc))
-        return Answer(OUTCOME_SUCCESS, sql=sql, columns=columns, rows=rows)
+        return Answer(
+            OUTCOME_SUCCESS,
+            sql=sql,
+            columns=result.columns,
+            rows=result.rows,
+            truncated=result.truncated,
+            total_rows=result.total_rows,
+        )
