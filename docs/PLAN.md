@@ -1,7 +1,7 @@
 - [x] **Slice 1: Walking skeleton**
   - Files: `pyproject.toml`, `app/main.py`, `app/config/loader.py`, `app/db/analytics.py`, `app/db/store.py`, `app/llm/client.py`, `app/pipeline/run.py`, `app/pipeline/validate.py`, `app/pipeline/execute.py`, `app/api/routes.py`, `config/sample.yaml`, `tests/fixtures/make_sample_db.py`, `tests/unit/test_skeleton.py`
   - Verify: SELECT via mock returns rows and a `success` audit row; `DROP TABLE` from mock is rejected, not executed, and audit-logged; a write through the `mode=ro` connection raises; `curl` against `uvicorn` returns the expected JSON.
-- [ ] **Slice 2: Golden-question harness and validator hardening**
+- [x] **Slice 2: Golden-question harness and validator hardening**
   - Files: `tests/golden/cases.yaml`, `tests/golden/test_golden.py`, `tests/golden/conftest.py`, `app/pipeline/run.py` (LLM injection seam), `app/pipeline/validate.py`, `tests/unit/test_validate.py`
   - Verify: `uv run pytest tests/golden` passes in replay mode; a changed expected result fails and prints the pass rate; gate at 95% applies once the set has 10 cases; parametrised attack list passes (multi-statement, DML inside CTE, comment tricks, `PRAGMA`, `ATTACH`, unknown table); valid CTEs pass; each rejection carries a reason in the response and audit log.
   - Note (slice 1): `app/pipeline/validate.py` checks statement shape and forbidden node types only. The table-existence check (SPEC 6.2) is still to add here.
@@ -41,9 +41,11 @@
 - [ ] **Slice 13: HTMX shell, chat and answer bubble**
   - Files: `app/ui/templates/base.html`, `login.html`, `picker.html`, `chat.html`, `_answer.html`, `app/ui/routes.py`, static CSS, `tests/unit/test_ui.py`
   - Verify: TestClient renders banner above explanation with details collapsed; manual run via `uv run uvicorn app.main:app --reload` through login, picker and one question.
+  - Design: https://claude.ai/artifact/NLjb6dqGBPhMB5gm4VXw3d (Chat and Database picker screens; the login screen is not mocked)
 - [ ] **Slice 14: History, re-run and deletion, plus table interactions and CSV export**
   - Files: `app/ui/templates/_sidebar.html`, `app/ui/templates/_table.html`, reopen route in `app/ui/routes.py`, `DELETE /api/conversations/{id}` and `GET /api/export/{message_id}.csv` in `app/api/routes.py`, `tests/unit/test_history.py`, `tests/unit/test_export.py`
   - Verify: reopen shows fresh table with "Re-run at" time; dropped column gives graceful failure with explanation intact; delete removes messages but keeps audit rows; deleting another user's conversation is refused; CSV matches table rows and headers and respects the cap; cells starting with `=`, `+`, `-` or `@` are neutralised; another user's message returns 404.
+  - Design: https://claude.ai/artifact/NLjb6dqGBPhMB5gm4VXw3d (sidebar recent list and results table with Export CSV on the Chat screen)
 - [ ] **Slice 15: Golden suite as release gate and hardening**
   - Files: `tests/golden/cases.yaml` (10 cases covering all four types, injection, out-of-scope, clarification, truncation), `docs/RUNNING.md`
   - Verify: `uv run pytest tests/golden` passes in replay; `--live` passes 10/10; `uv run ruff check .`, `uv run mypy app` and `uv run pytest` are green.

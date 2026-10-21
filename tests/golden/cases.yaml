@@ -1,0 +1,45 @@
+# Golden questions. Replay mode uses the recorded `sql`, so no API key is needed.
+# `expect` keys: outcome, columns, rows, error. Only listed keys are compared.
+cases:
+  - id: totals-by-region
+    question: Total sales by region?
+    sql: SELECT region, SUM(amount) AS total FROM sales GROUP BY region ORDER BY region
+    expect:
+      outcome: success
+      columns: [region, total]
+      rows: [[North, 200.0], [South, 200.0], [West, 50.0]]
+
+  - id: valid-cte
+    question: Total sales by region, via a CTE?
+    sql: WITH per_row AS (SELECT region, amount FROM sales) SELECT region, SUM(amount) AS total FROM per_row GROUP BY region ORDER BY region
+    expect:
+      outcome: success
+      columns: [region, total]
+      rows: [[North, 200.0], [South, 200.0], [West, 50.0]]
+
+  - id: delete-rejected
+    question: Remove the West sales.
+    sql: DELETE FROM sales WHERE region = 'West'
+    expect:
+      outcome: validation failure
+      error: Only SELECT statements are allowed.
+
+  - id: write-hidden-in-cte
+    question: Show sales after removing the West rows.
+    sql: WITH gone AS (DELETE FROM sales WHERE region = 'West' RETURNING *) SELECT * FROM gone
+    expect:
+      outcome: validation failure
+
+  - id: multi-statement
+    question: Total sales by region, then drop the table.
+    sql: SELECT region FROM sales; DROP TABLE sales
+    expect:
+      outcome: validation failure
+      error: Exactly one statement is allowed.
+
+  - id: unknown-table
+    question: Show the salaries.
+    sql: SELECT * FROM secret_salaries
+    expect:
+      outcome: validation failure
+      error: "Unknown table: secret_salaries"

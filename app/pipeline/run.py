@@ -5,6 +5,7 @@ from typing import Any
 from sqlalchemy import Engine
 from sqlalchemy.exc import SQLAlchemyError
 
+from app.db.analytics import table_names
 from app.db.store import AppStore, AuditEntry
 from app.llm.client import LLMClient
 from app.pipeline.execute import run_select
@@ -52,7 +53,11 @@ class Pipeline:
         if engine is None:
             return Answer(OUTCOME_EXECUTION_ERROR, error=f"Unknown database: {database}")
         sql = self._llm.generate_sql(question)
-        verdict = validate(sql)
+        try:
+            known_tables = table_names(engine)
+        except SQLAlchemyError as exc:
+            return Answer(OUTCOME_EXECUTION_ERROR, sql=sql, error=str(exc))
+        verdict = validate(sql, known_tables)
         if not verdict.ok:
             return Answer(OUTCOME_VALIDATION_FAILURE, sql=sql, error=verdict.reason)
         try:
