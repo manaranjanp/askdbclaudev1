@@ -24,19 +24,31 @@ GATE_MIN_CASES = 10
 class Case:
     id: str
     question: str
-    sql: str
+    sql: list[str]
     expect: dict[str, Any]
+    intent: str = "data"
 
 
 class RecordedLLM:
-    # Replay mode: the SQL is recorded in cases.yaml, so the suite needs no API key.
+    # Replay mode: the SQL and intent are recorded in cases.yaml, so the suite needs no API key.
+    # Replies come in order (generation, then repair). Once they run out, the last one repeats.
     prompt_version = "recorded"
 
-    def __init__(self, sql: str) -> None:
-        self._sql = sql
+    def __init__(self, sql: list[str], intent: str) -> None:
+        self._sql = list(sql)
+        self._intent = intent
+
+    def classify_intent(self, question: str) -> str:
+        return self._intent
 
     def generate_sql(self, question: str, schema: str) -> str:
-        return self._sql
+        return self._next_sql()
+
+    def repair_sql(self, question: str, schema: str, failed_sql: str, error: str) -> str:
+        return self._next_sql()
+
+    def _next_sql(self) -> str:
+        return self._sql.pop(0) if len(self._sql) > 1 else self._sql[0]
 
 
 def load_cases(path: Path = CASES_PATH) -> list[Case]:
@@ -45,16 +57,21 @@ def load_cases(path: Path = CASES_PATH) -> list[Case]:
         Case(
             id=item["id"],
             question=item["question"],
-            sql=item["sql"],
+            sql=_as_list(item.get("sql", "")),
             expect=item["expect"],
+            intent=item.get("intent", "data"),
         )
         for item in raw["cases"]
     ]
 
 
+def _as_list(sql: str | list[str]) -> list[str]:
+    return [sql] if isinstance(sql, str) else list(sql)
+
+
 def run_case(case: Case, db_path: Path, store_path: Path, live: bool = False) -> Answer:
     # Live mode asks the real model and ignores the recorded SQL; it needs ANTHROPIC_API_KEY.
-    llm: LLMClient = AnthropicLLM(model=load_llm_model(CONFIG_DIR)) if live else RecordedLLM(case.sql)
+    llm: LLMClient = AnthropicLLM(model=load_llm_model(CONFIG_DIR)) if live else RecordedLLM(case.sql, case.intent)
     pipeline = Pipeline(
         {"sample": open_readonly(db_path)},
         llm,
@@ -87,6 +104,10 @@ def _actual(answer: Answer, key: str) -> Any:
         )
     if key == "error":
         return answer.error
+    if key == "message":
+        return answer.message
+    if key == "repair_used":
+        return answer.repair_used
     if key == "row_count":
         return len(answer.rows) if answer.outcome == OUTCOME_SUCCESS else None
     if key == "truncated":

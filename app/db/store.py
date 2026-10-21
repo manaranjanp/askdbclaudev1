@@ -7,6 +7,7 @@ from pathlib import Path
 from argon2 import PasswordHasher
 from argon2.exceptions import VerifyMismatchError
 from sqlalchemy import (
+    Boolean,
     Column,
     DateTime,
     Engine,
@@ -37,6 +38,7 @@ audit_log = Table(
     Column("outcome", String, nullable=False),
     Column("error", Text),
     Column("prompt_version", String),
+    Column("repair_used", Boolean, nullable=False, server_default="0"),
 )
 
 users = Table(
@@ -67,6 +69,7 @@ class AuditEntry:
     row_count: int | None
     error: str | None
     prompt_version: str | None = None
+    repair_used: bool = False
 
 
 class AppStore:

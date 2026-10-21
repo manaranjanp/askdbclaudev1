@@ -32,8 +32,10 @@ class AskResponse(BaseModel):
     columns: list[str]
     rows: list[list[Any]]
     error: str | None
+    message: str | None
     truncated: bool
     total_rows: int | None
+    repair_used: bool
 
 
 class DatabaseInfo(BaseModel):
@@ -95,6 +97,8 @@ def ask(body: AskRequest, request: Request, username: str = Depends(current_user
         columns=answer.columns,
         rows=[list(row) for row in answer.rows],
         error=answer.error,
+        message=answer.message,
         truncated=answer.truncated,
         total_rows=answer.total_rows,
+        repair_used=answer.repair_used,
     )

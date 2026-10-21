@@ -1,5 +1,5 @@
 from collections.abc import Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any
 
 from sqlalchemy import Engine
@@ -10,12 +10,17 @@ from app.db.analytics import describe_schema, table_names
 from app.db.store import AppStore, AuditEntry
 from app.llm.client import GenerationError, LLMClient, LLMUnavailable
 from app.pipeline.execute import QueryTimeout, run_select
+from app.pipeline.intent import DECLINE_MESSAGE, NO_MATCHING_RECORDS, parse_intent
 from app.pipeline.validate import validate
 
 OUTCOME_SUCCESS = "success"
+OUTCOME_DECLINED = "declined: non-data"
 OUTCOME_VALIDATION_FAILURE = "validation failure"
 OUTCOME_EXECUTION_ERROR = "execution error"
 OUTCOME_TIMEOUT = "timeout"
+
+# Only these failures get the one repair attempt. A timeout is not repaired; it asks the user to narrow the question.
+REPAIRABLE_OUTCOMES = (OUTCOME_VALIDATION_FAILURE, OUTCOME_EXECUTION_ERROR)
 
 AI_UNAVAILABLE_MESSAGE = "The AI service is unavailable. Try again shortly."
 
@@ -27,8 +32,10 @@ class Answer:
     columns: list[str] = field(default_factory=list)
     rows: list[tuple[Any, ...]] = field(default_factory=list)
     error: str | None = None
+    message: str | None = None
     truncated: bool = False
     total_rows: int | None = None
+    repair_used: bool = False
 
 
 class Pipeline:
@@ -58,18 +65,26 @@ class Pipeline:
                 row_count=len(answer.rows) if answer.outcome == OUTCOME_SUCCESS else None,
                 error=answer.error,
                 prompt_version=self._llm.prompt_version,
+                repair_used=answer.repair_used,
             )
         )
         return answer
 
     def _answer(self, database: str, question: str) -> Answer:
-        # Stage order is fixed (CLAUDE.md guardrail 2). Intent (slice 7) and retrieval (slice 9)
-        # are not built yet and pass straight through. Repair (slice 8) is not built yet either.
+        # Stage order is fixed (CLAUDE.md guardrail 2). Retrieval (slice 9) is not built yet and passes
+        # straight through. The explanation stage waits on SPEC Q2.
         if database in self._unavailable:
             return Answer(OUTCOME_EXECUTION_ERROR, error=f"Database unavailable: {self._unavailable[database]}")
         engine = self._engines.get(database)
         if engine is None:
             return Answer(OUTCOME_EXECUTION_ERROR, error=f"Unknown database: {database}")
+        try:
+            intent = parse_intent(self._llm.classify_intent(question))
+        except LLMUnavailable:
+            return Answer(OUTCOME_EXECUTION_ERROR, error=AI_UNAVAILABLE_MESSAGE)
+        if intent != "data":
+            # The decline text never repeats the question, so injected text is not echoed back.
+            return Answer(OUTCOME_DECLINED, message=DECLINE_MESSAGE)
         try:
             schema = describe_schema(engine)
             known_tables = table_names(engine)
@@ -82,6 +97,26 @@ class Pipeline:
             return Answer(OUTCOME_EXECUTION_ERROR, error=AI_UNAVAILABLE_MESSAGE)
         except GenerationError as exc:
             return Answer(OUTCOME_EXECUTION_ERROR, error=str(exc))
+
+        answer = self._attempt(engine, sql, known_tables)
+        if answer.outcome not in REPAIRABLE_OUTCOMES or answer.sql is None:
+            return answer
+        return self._repair(engine, question, schema, known_tables, answer)
+
+    def _repair(
+        self, engine: Engine, question: str, schema: str, known_tables: set[str], failed: Answer
+    ) -> Answer:
+        # Exactly one repair call. Its result is final, whether it runs or not (SPEC 5.7, slice 8).
+        assert failed.sql is not None
+        try:
+            repaired_sql = self._llm.repair_sql(question, schema, failed.sql, failed.error or "")
+        except LLMUnavailable:
+            return Answer(OUTCOME_EXECUTION_ERROR, sql=failed.sql, error=AI_UNAVAILABLE_MESSAGE, repair_used=True)
+        except GenerationError:
+            return replace(failed, repair_used=True)
+        return replace(self._attempt(engine, repaired_sql, known_tables), repair_used=True)
+
+    def _attempt(self, engine: Engine, sql: str, known_tables: set[str]) -> Answer:
         verdict = validate(sql, known_tables)
         if not verdict.ok:
             return Answer(OUTCOME_VALIDATION_FAILURE, sql=sql, error=verdict.reason)
@@ -100,6 +135,8 @@ class Pipeline:
             sql=sql,
             columns=result.columns,
             rows=result.rows,
+            message=None if result.rows else NO_MATCHING_RECORDS,
             truncated=result.truncated,
             total_rows=result.total_rows,
         )
+

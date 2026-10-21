@@ -12,10 +12,16 @@ class GenerationError(Exception):
 
 
 class LLMClient(Protocol):
-    # Recorded in the audit log so every answer can be traced to the prompt that produced it (SPEC 10.2).
+    # Recorded in the audit log so every answer can be traced to the prompts that produced it (SPEC 10.2).
     prompt_version: str
 
+    # The intent classifier sees the question text only (CLAUDE.md guardrail 3).
+    def classify_intent(self, question: str) -> str: ...
+
     def generate_sql(self, question: str, schema: str) -> str: ...
+
+    # One repair attempt per question (SPEC 5.7 and slice 8). The model sees the failed SQL and its error.
+    def repair_sql(self, question: str, schema: str, failed_sql: str, error: str) -> str: ...
 
 
 class MockLLM:
@@ -25,5 +31,11 @@ class MockLLM:
     def __init__(self, sql: str) -> None:
         self._sql = sql
 
+    def classify_intent(self, question: str) -> str:
+        return "data"
+
     def generate_sql(self, question: str, schema: str) -> str:
+        return self._sql
+
+    def repair_sql(self, question: str, schema: str, failed_sql: str, error: str) -> str:
         return self._sql

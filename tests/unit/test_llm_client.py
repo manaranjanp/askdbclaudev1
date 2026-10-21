@@ -18,23 +18,26 @@ from tests.fixtures.make_sample_db import make_sample_db
 MODEL = "claude-test-model"
 SCHEMA = "sales(id INTEGER, region TEXT, amount REAL)"
 GOOD_SQL = "SELECT region, SUM(amount) AS total FROM sales GROUP BY region ORDER BY region"
+PROMPT_VERSION = "sql_v1,intent_v1,repair_v1"
 
 
 class StubMessages:
-    def __init__(self, result: Any) -> None:
-        self._result = result
+    # Each call takes the next queued result; an exception in the queue is raised instead.
+    def __init__(self, results: list[Any]) -> None:
+        self._results = list(results)
         self.calls: list[dict[str, Any]] = []
 
     def create(self, **kwargs: Any) -> Any:
         self.calls.append(kwargs)
-        if isinstance(self._result, Exception):
-            raise self._result
-        return self._result
+        result = self._results.pop(0)
+        if isinstance(result, Exception):
+            raise result
+        return result
 
 
 class StubClient:
-    def __init__(self, result: Any) -> None:
-        self.messages = StubMessages(result)
+    def __init__(self, *results: Any) -> None:
+        self.messages = StubMessages(list(results))
 
 
 def text_reply(text: str) -> SimpleNamespace:
@@ -45,8 +48,8 @@ def connection_error() -> anthropic.APIConnectionError:
     return anthropic.APIConnectionError(request=httpx.Request("POST", "https://api.anthropic.com/v1/messages"))
 
 
-def llm_with(result: Any) -> tuple[AnthropicLLM, StubClient]:
-    stub = StubClient(result)
+def llm_with(*results: Any) -> tuple[AnthropicLLM, StubClient]:
+    stub = StubClient(*results)
     return AnthropicLLM(model=MODEL, client=stub), stub
 
 
@@ -62,10 +65,20 @@ def test_returns_the_model_text_and_sends_schema_and_question_as_data() -> None:
     assert call["messages"] == [{"role": "user", "content": "<question>\nTotal by region?\n</question>"}]
 
 
-def test_prompt_version_is_the_template_name() -> None:
-    llm, _ = llm_with(text_reply(GOOD_SQL))
+def test_prompt_version_names_both_prompts() -> None:
+    llm, _ = llm_with()
 
-    assert llm.prompt_version == "sql_v1"
+    assert llm.prompt_version == PROMPT_VERSION
+
+
+def test_intent_call_sends_only_the_question_text_in_a_message_tag() -> None:
+    llm, stub = llm_with(text_reply("data"))
+
+    assert llm.classify_intent("Total by region?") == "data"
+
+    call = stub.messages.calls[0]
+    assert "Total by region?" not in call["system"]
+    assert call["messages"] == [{"role": "user", "content": "<message>\nTotal by region?\n</message>"}]
 
 
 def test_empty_reply_is_a_generation_error() -> None:
@@ -97,9 +110,9 @@ def app_factory(tmp_path: Path) -> Any:
     config_dir.mkdir()
     (config_dir / "sample.yaml").write_text(f"name: sample\npath: {db}\n")
 
-    def build(result: Any) -> tuple[Any, Path]:
+    def build(*results: Any) -> tuple[Any, Path]:
         store_path = tmp_path / "app_store.sqlite"
-        llm, _ = llm_with(result)
+        llm, _ = llm_with(*results)
         return logged_in_client(create_app(config_dir, store_path, llm), store_path), store_path
 
     return build
@@ -119,24 +132,24 @@ def test_api_outage_is_reported_and_no_query_is_logged(app_factory: Any) -> None
     assert body["outcome"] == "execution error"
     assert body["error"] == AI_UNAVAILABLE_MESSAGE
     assert body["sql"] is None
-    assert audit_rows(store_path) == [("execution error", None, "sql_v1")]
+    assert audit_rows(store_path) == [("execution error", None, PROMPT_VERSION)]
 
 
 def test_malformed_reply_is_a_generation_failure_with_no_query(app_factory: Any) -> None:
-    client, store_path = app_factory(text_reply("   "))
+    client, store_path = app_factory(text_reply("data"), text_reply("   "))
 
     body = client.post("/api/ask", json={"database": "sample", "question": "Totals?"}).json()
 
     assert body["outcome"] == "execution error"
     assert body["error"] == "The model did not return a SQL statement."
-    assert audit_rows(store_path) == [("execution error", None, "sql_v1")]
+    assert audit_rows(store_path) == [("execution error", None, PROMPT_VERSION)]
 
 
 def test_successful_answer_is_audited_with_prompt_version(app_factory: Any) -> None:
-    client, store_path = app_factory(text_reply(GOOD_SQL))
+    client, store_path = app_factory(text_reply("data"), text_reply(GOOD_SQL))
 
     body = client.post("/api/ask", json={"database": "sample", "question": "Totals?"}).json()
 
     assert body["outcome"] == "success"
     assert body["rows"] == [["North", 200.0], ["South", 200.0], ["West", 50.0]]
-    assert audit_rows(store_path) == [("success", GOOD_SQL, "sql_v1")]
+    assert audit_rows(store_path) == [("success", GOOD_SQL, PROMPT_VERSION)]

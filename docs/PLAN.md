@@ -24,7 +24,8 @@
   - Files: `prompts/explain_v1.md`, `app/pipeline/explain.py`, `tests/unit/test_explain.py`, response model, `prompts/intent_v1.md`, `app/pipeline/intent.py`, `tests/unit/test_intent.py`, decline builder, golden cases
   - Verify: explain call receives the actual rows; zero rows returns "No matching records" with SQL; injection text in a cell is passed as data; classifier receives only the question text; non-data never reaches generate; decline does not echo the injected text; `declined: non-data` is audit-logged; golden cases for small talk, data-change request, injection, and a data question that must not be declined.
   - Note (slice 6): the explain stage sends result rows to the hosted LLM. Q2 in SPEC section 12 is still open, so the explain call is blocked until it is decided.
-- [ ] **Slice 8: Single repair attempt**
+  - Partly done (slice 7 run): intent classifier (`prompts/intent_v1.md`), strict parse, decline with `declined: non-data` audit, and the "No matching records." message are built and golden-tested. Still to do: explain stage and its tests (`explain_v1.md`, `explain.py`), blocked on Q2.
+- [x] **Slice 8: Single repair attempt**
   - Files: `app/pipeline/repair.py`, `tests/unit/test_repair.py`, `flags` for `repair_used`, golden case with recorded bad-then-good response
   - Verify: bad then good SQL gives one repair and success; bad twice gives failure with SQL and no third call; a repair returning `DELETE` is rejected by the validator.
 - [ ] **Slice 9: Retrieval part 1 (tables, columns, join neighbours)**

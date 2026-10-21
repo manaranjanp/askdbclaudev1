@@ -7,32 +7,55 @@ from app.llm.client import GenerationError, LLMUnavailable
 
 PROMPTS_DIR = Path(__file__).resolve().parents[2] / "prompts"
 SQL_PROMPT = "sql_v1.md"
+INTENT_PROMPT = "intent_v1.md"
+REPAIR_PROMPT = "repair_v1.md"
 MAX_TOKENS = 1024
 
 
 class AnthropicLLM:
     def __init__(self, model: str, prompts_dir: Path = PROMPTS_DIR, client: Any = None) -> None:
         self._model = model
-        self._template = (prompts_dir / SQL_PROMPT).read_text()
-        self.prompt_version = Path(SQL_PROMPT).stem
+        self._sql_template = (prompts_dir / SQL_PROMPT).read_text()
+        self._intent_template = (prompts_dir / INTENT_PROMPT).read_text()
+        self._repair_template = (prompts_dir / REPAIR_PROMPT).read_text()
+        # All three versions go in the audit log, so an answer can be traced to the prompts that produced it.
+        self.prompt_version = ",".join(Path(p).stem for p in (SQL_PROMPT, INTENT_PROMPT, REPAIR_PROMPT))
         # The SDK reads ANTHROPIC_API_KEY from the environment; tests pass a stub instead.
         self._client = client if client is not None else anthropic.Anthropic()
 
+    def classify_intent(self, question: str) -> str:
+        # Returns the raw reply; the pipeline parses it strictly.
+        return self._send(self._intent_template, f"<message>\n{question}\n</message>")
+
     def generate_sql(self, question: str, schema: str) -> str:
-        system = self._template.replace("{{schema}}", schema)
+        system = self._sql_template.replace("{{schema}}", schema)
+        # The question goes in as data, wrapped so the prompt can refer to it as such.
+        return self._sql_reply(self._send(system, f"<question>\n{question}\n</question>"))
+
+    def repair_sql(self, question: str, schema: str, failed_sql: str, error: str) -> str:
+        system = self._repair_template.replace("{{schema}}", schema)
+        user_text = (
+            f"<question>\n{question}\n</question>\n"
+            f"<failed_sql>\n{failed_sql}\n</failed_sql>\n"
+            f"<error>\n{error}\n</error>"
+        )
+        return self._sql_reply(self._send(system, user_text))
+
+    def _sql_reply(self, text: str) -> str:
+        if not text:
+            raise GenerationError("The model did not return a SQL statement.")
+        return text
+
+    def _send(self, system: str, user_text: str) -> str:
         try:
             response = self._client.messages.create(
                 model=self._model,
                 max_tokens=MAX_TOKENS,
                 system=system,
-                # The question goes in as data, wrapped so the prompt can refer to it as such.
-                messages=[{"role": "user", "content": f"<question>\n{question}\n</question>"}],
+                messages=[{"role": "user", "content": user_text}],
             )
         except anthropic.APIError as exc:
             raise LLMUnavailable(str(exc)) from exc
-        text = "".join(
+        return "".join(
             getattr(block, "text", "") for block in response.content if getattr(block, "type", None) == "text"
         ).strip()
-        if not text:
-            raise GenerationError("The model did not return a SQL statement.")
-        return text
